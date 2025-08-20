@@ -1,4 +1,4 @@
-# 本 README 文件仅为 painting.js 的说明文档
+# 本 README 文件仅为 painting.js 和 test_projection.js 的说明文档
 
 # Painting Bot
 
