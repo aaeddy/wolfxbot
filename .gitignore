@@ -1,3 +1,7 @@
 node_modules
 Lite2Edit.jar
 projection.schem
+tmp.js
+blacklist.txt
+onlinePlayers.txt
+whitelist.txt

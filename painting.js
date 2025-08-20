@@ -320,10 +320,6 @@ async function buildAllChunks(schematic) {
   for (let i = 0; i < 16; i++) {
     await buildChunk(i, schematic);
     
-    // 每完成一个大区块，重新进入服务器
-    bot.chat('/msg AEddyQWQ 即将重新进入服务器以确保投影检查准确性');
-    console.log('即将重新进入服务器以确保投影检查准确性');
-    
     // 等待一段时间确保传送完成
     await new Promise(resolve => setTimeout(resolve, 5000));
   }

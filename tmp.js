@@ -17,6 +17,7 @@ const bot2 = mineflayer.createBot({
 })
 
 bot.on('spawn', async () => {
+    bot.chat('/tp 135 33 26')
     bot.chat('/msg AEddyQWQ ok')
 })
 
