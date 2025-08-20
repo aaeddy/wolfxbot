@@ -57,18 +57,4 @@
 3. 使用其他第三方工具：
    - 例如 Litematica (适用于 1.12.2 及更高版本)
    - Schematica (适用于 1.7.10 - 1.12.2)
-   - 使用 Lite2Edit 将 .litematic 投影文件转换为 .schem 投影文件
-
-# [Lite2Edit] 二进制分发版
-
-本仓库提供由 **GoldenDelicios** 开发的 [Lite2Edit] 的预编译二进制文件，便于用户直接下载使用。
-
-- **原始开发者**: [GoldenDelicios](https://github.com/GoldenDelicios)
-- **原始项目地址**: [https://github.com/GoldenDelicios/original-repo-name](https://github.com/GoldenDelicios/Lite2Edit/)
-- **许可协议**: **MIT License**
-- **免责声明**: 本人仅为第三方分发者，并非该软件的开发者。软件版权及责任归原始开发者所有。
-
-**完整的许可条款请参阅本项目根目录下的 [LICENSE](LICENSE) 文件。**
-
-## 下载
-点击 `Lite2Edit.jar` 文件即可下载。
+   - 使用 Lite2Edit(https://github.com/GoldenDelicios/Lite2Edit/) 将 .litematic 投影文件转换为 .schem 投影文件
