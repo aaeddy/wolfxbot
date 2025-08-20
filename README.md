@@ -58,3 +58,7 @@
    - 例如 Litematica (适用于 1.12.2 及更高版本)
    - Schematica (适用于 1.7.10 - 1.12.2)
    - 使用 [Lite2Edit](https://github.com/GoldenDelicios/Lite2Edit/) 将 .litematic 投影文件转换为 .schem 投影文件
+
+## 免责声明
+
+本项目部分代码由 AI 工具生成，仅供参考和学习。作者不对其完全准确性和潜在版权问题负责，使用者请自行判断和审查。
