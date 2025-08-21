@@ -179,25 +179,25 @@ async function fetchMaterials(materialsNeeded) {
     // 查找对应颜色的箱子
     const chestInfo = materialChests.find(chest => chest.color === color);
     if (!chestInfo) {
-      bot.chat(`/msg AEddyQWQ 未找到 ${color} 颜色地毯的木桶`);
-      console.error(`未找到 ${color} 颜色地毯的木桶`)
+      bot.chat(`/msg AEddyQWQ 未找到 ${color} 颜色地毯的容器`);
+      console.error(`未找到 ${color} 颜色地毯的容器`)
       continue;
     }
     
-    // 移动到木桶附近（z+1格上）
+    // 移动到容器附近（z+1格上）
     const targetPos = new Vec3(chestInfo.pos.x, chestInfo.pos.y, chestInfo.pos.z + 1);
     await moveToPosition(targetPos);
     
-    // 查找并打开木桶
+    // 查找并打开容器
     const chestBlock = bot.findBlock({
-      matching: block => block.name === 'barrel',
+      matching: block => block.name === chestInfo.type || (chestInfo.type === 'barrel' && block.name === 'barrel') || (chestInfo.type === 'chest' && block.name === 'chest'),
       maxDistance: 5,
       point: chestInfo.pos
     });
     
     if (!chestBlock) {
-      bot.chat(`/msg AEddyQWQ 未在指定位置找到木桶`);
-      console.error(`未在指定位置找到木桶`);
+      bot.chat(`/msg AEddyQWQ 未在指定位置找到容器`);
+      console.error(`未在指定位置找到容器`);
       continue;
     }
     

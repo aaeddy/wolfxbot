@@ -1,13 +1,5 @@
 const mineflayer = require('mineflayer')
 
-const bot = mineflayer.createBot({
-    host: 'localhost',
-    username: 'tmpbot',
-    port: 25565,
-    version: '1.20.4',
-    auth: 'offline'
-})
-
 const bot2 = mineflayer.createBot({
     host: 'localhost',
     username: 'tmpbot2',

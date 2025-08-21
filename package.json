@@ -8,10 +8,11 @@
   },
   "dependencies": {
     "mineflayer": "^4.32.0",
+    "mineflayer-auto-eat": "^5.0.3",
     "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-web-inventory": "^1.3.0",
     "prismarine-schematic": "^1.2.3",
-    "vec3": "^0.1.7",
-    "mineflayer-web-inventory": "^1.3.0"
+    "vec3": "^0.1.7"
   },
   "keywords": [
     "mineflayer",
