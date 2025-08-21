@@ -1,42 +1,30 @@
 const mineflayer = require('mineflayer')
+const { pathfinder, Movements, goals: { GoalNear } } = require('mineflayer-pathfinder');
 
-const bot2 = mineflayer.createBot({
-    host: 'localhost',
-    username: 'tmpbot2',
+const bot = mineflayer.createBot({
+    host: 'wolfx.jp',
+    username: 'paintingbot',
     port: 25565,
     version: '1.20.4',
-    auth: 'offline'
+    auth: 'microsoft'
 })
+
+bot.loadPlugin(pathfinder);
 
 bot.on('spawn', async () => {
-    bot.chat('/tp 135 33 26')
     bot.chat('/msg AEddyQWQ ok')
-})
-
-bot2.on('spawn', async () => {
-    bot2.chat('/msg AEddyQWQ ok')
+    // await bot.pathfinder.setGoal(new GoalNear(37441, 193, 13887))
+    bot.chat('/sethome')
 })
 
 bot.on('error', (err) => {
   console.log('Bot 发生错误:', err);
 });
 
-bot2.on('error', (err) => {
-  console.log('Bot2 发生错误:', err);
-});
-
 bot.on('kicked', (reason) => {
   console.log('Bot 被踢出服务器:', reason);
 });
 
-bot2.on('kicked', (reason) => {
-  console.log('Bot2 被踢出服务器:', reason);
-});
-
 bot.on('end', () => {
   console.log('Bot 已断开连接');
-});
-
-bot2.on('end', () => {
-  console.log('Bot2 已断开连接');
 });

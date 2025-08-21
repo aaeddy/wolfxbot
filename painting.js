@@ -21,7 +21,7 @@ bot.loadPlugin(pathfinder);
 inventoryViewer(bot);
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37440, 192, 13887);
+const buildStartPos = new Vec3(37440, 193, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -189,88 +189,94 @@ async function outputBlockInfoByRegion(schematicData, outputPath) {
 
 // 检查并获取食物
 async function checkAndFetchFood() {
-  // 检查当前饥饿值，如果低于15则获取食物
-  if (bot.food < 15) {
-    console.log(`当前饥饿值为 ${bot.food}，需要获取食物`);
+  console.log('检查并获取食物...');
 
-    // 查找食物容器
-    const foodChestInfo = materialChests.find(chest => chest.food);
-    if (!foodChestInfo) {
-      console.log('未找到食物容器');
-      return;
-    }
+  // 查找食物容器
+  const foodChestInfo = materialChests.find(chest => chest.food);
+  if (!foodChestInfo) {
+    console.log('未找到食物容器');
+    return;
+  }
 
-    // 移动到食物容器附近
-    const distance = bot.entity.position.distanceTo(foodChestInfo.pos);
-    if (distance > 3) {  // 如果距离大于3格则移动到容器附近
-      console.log(`玩家距离食物${foodChestInfo.type}过远 (${distance.toFixed(2)} 格)，移动到食物${foodChestInfo.type}附近: ${foodChestInfo.type} at (${foodChestInfo.pos.x}, ${foodChestInfo.pos.y}, ${foodChestInfo.pos.z})`);
+  // 移动到食物容器附近
+  const distance = bot.entity.position.distanceTo(foodChestInfo.pos);
+  if (distance > 3) {  // 如果距离大于3格则移动到容器附近
+    console.log(`玩家距离食物${foodChestInfo.type}过远 (${distance.toFixed(2)} 格)，移动到食物${foodChestInfo.type}附近: ${foodChestInfo.type} at (${foodChestInfo.pos.x}, ${foodChestInfo.pos.y}, ${foodChestInfo.pos.z})`);
 
-      // 使用pathfinder移动到容器附近
-      const goal = new GoalNear(foodChestInfo.pos.x, foodChestInfo.pos.y, foodChestInfo.pos.z, 2); // 移动到距离容器2格范围内
+    // 使用pathfinder移动到容器附近
+    const goal = new GoalNear(foodChestInfo.pos.x, foodChestInfo.pos.y, foodChestInfo.pos.z, 2); // 移动到距离容器2格范围内
 
-      // 使用Promise来处理pathfinder的移动
-      await new Promise((resolve, reject) => {
-        // 设置10秒超时
-        const timeout = setTimeout(() => {
-          bot.pathfinder.stop();
-          console.log('移动超时');
-          reject(new Error('移动超时'));
-        }, 10000);
+    // 使用Promise来处理pathfinder的移动
+    await new Promise((resolve, reject) => {
+      // 设置10秒超时
+      const timeout = setTimeout(() => {
+        bot.pathfinder.stop();
+        console.log('移动超时');
+        reject(new Error('移动超时'));
+      }, 10000);
 
-        // 监听移动完成事件
-        bot.once('goal_reached', () => {
-          clearTimeout(timeout);
-          console.log('已成功移动到食物容器附近');
-          resolve();
-        });
-
-        // 监听移动失败事件
-        bot.once('path_update', (results) => {
-          if (results.status === 'noPath') {
-            clearTimeout(timeout);
-            console.log('无法找到路径到食物容器');
-            reject(new Error('无法找到路径到食物容器'));
-          }
-        });
-
-        // 开始移动
-        bot.pathfinder.setGoal(goal);
-      }).catch(err => {
-        console.log(`移动失败: ${err.message}`);
-        return; // 移动失败则跳过
+      // 监听移动完成事件
+      bot.once('goal_reached', () => {
+        clearTimeout(timeout);
+        console.log('已成功移动到食物容器附近');
+        resolve();
       });
-    }
 
-    // 打开食物容器并获取食物
-    console.log(`从食物 ${foodChestInfo.type}中获取 cooked_cod`);
+      // 监听移动失败事件
+      bot.once('path_update', (results) => {
+        if (results.status === 'noPath') {
+          clearTimeout(timeout);
+          console.log('无法找到路径到食物容器');
+          reject(new Error('无法找到路径到食物容器'));
+        }
+      });
 
-    // 查找容器方块
-    const chestBlock = bot.blockAt(foodChestInfo.pos);
-    if (!chestBlock) {
-      console.log(`找不到食物${foodChestInfo.type}方块 at (${foodChestInfo.pos.x}, ${foodChestInfo.pos.y}, ${foodChestInfo.pos.z})`);
+      // 开始移动
+      bot.pathfinder.setGoal(goal);
+    }).catch(err => {
+      console.log(`移动失败: ${err.message}`);
+      return; // 移动失败则跳过
+    });
+  }
+
+  // 打开食物容器并获取食物
+  console.log(`从食物 ${foodChestInfo.type}中获取 cooked_cod`);
+
+  // 查找容器方块
+  const chestBlock = bot.blockAt(foodChestInfo.pos);
+  if (!chestBlock) {
+    console.log(`找不到食物${foodChestInfo.type}方块 at (${foodChestInfo.pos.x}, ${foodChestInfo.pos.y}, ${foodChestInfo.pos.z})`);
+    return;
+  }
+
+  // 打开容器
+  try {
+    const chest = await bot.openContainer(chestBlock);
+
+    // 查找食物
+    const items = chest.containerItems().filter(item => item.name === 'cooked_cod');
+    if (items.length === 0) {
+      console.log(`${foodChestInfo.type}中没有找到 cooked_cod`);
+      chest.close();
       return;
     }
 
-    // 打开容器
-    try {
-      const chest = await bot.openContainer(chestBlock);
+    // 计算容器中该食物的总数量
+    const totalCount = items.reduce((sum, item) => sum + item.count, 0);
 
-      // 查找食物
-      const items = chest.containerItems().filter(item => item.name === 'cooked_cod');
-      if (items.length === 0) {
-        console.log(`${foodChestInfo.type}中没有找到 cooked_cod`);
-        chest.close();
-        return;
-      }
+    // 计算背包中已有的食物数量
+    const inventoryItems = bot.inventory.items().filter(item => item.name === 'cooked_cod');
+    const inventoryCount = inventoryItems.reduce((sum, item) => sum + item.count, 0);
 
-      // 计算容器中该食物的总数量
-      const totalCount = items.reduce((sum, item) => sum + item.count, 0);
-
-      // 计算需要拿取的食物数量（至少10个，最多拿取到饥饿值满）
-      const neededCount = Math.min(totalCount, Math.max(10, 20 - bot.food));
-
+    // 计算需要拿取或丢弃的食物数量，保持总数为64
+    const targetTotalCount = 64;
+    if (inventoryCount < targetTotalCount) {
+      // 需要拿取食物
+      const neededCount = targetTotalCount - inventoryCount;
+      const availableCount = Math.min(totalCount, neededCount);
+      
       // 从容器中拿取食物，处理超过64个的情况
-      let remainingCount = neededCount;
+      let remainingCount = availableCount;
       while (remainingCount > 0) {
         // 查找还有食物的槽位
         const item = chest.containerItems().find(item => item.name === 'cooked_cod' && item.count > 0);
@@ -289,20 +295,29 @@ async function checkAndFetchFood() {
         // 更新剩余需要拿取的数量
         remainingCount -= takeCount;
       }
-
-      // 关闭容器
-      chest.close();
-
-      // 等待一段时间确保食物获取完成
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // 自动进食直到饥饿值满
-      await autoEat();
-    } catch (err) {
-      console.log(`打开食物容器或拿取食物失败: ${err.message}`);
+    } else if (inventoryCount > targetTotalCount) {
+      // 需要丢弃多余的食物
+      const excessCount = inventoryCount - targetTotalCount;
+      console.log(`背包中食物过多，需要丢弃 ${excessCount} 个 cooked_cod`);
+      
+      let remainingCount = excessCount;
+      for (const item of inventoryItems) {
+        if (remainingCount <= 0) break;
+        
+        const discardCount = Math.min(remainingCount, item.count);
+        await bot.toss(item.type, null, discardCount);
+        console.log(`已丢弃 ${discardCount} 个 cooked_cod`);
+        remainingCount -= discardCount;
+      }
     }
-  } else {
-    console.log(`当前饥饿值为 ${bot.food}，不需要获取食物`);
+
+    // 关闭容器
+    chest.close();
+
+    // 等待一段时间确保食物获取完成
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  } catch (err) {
+    console.log(`打开食物容器或拿取食物失败: ${err.message}`);
   }
 }
 
@@ -336,6 +351,21 @@ async function autoEat() {
   }
 
   console.log(`自动进食完成，当前饥饿值: ${bot.food}`);
+}
+
+// 实时监控饥饿值并在需要时自动进食
+async function monitorHunger() {
+  console.log('开始实时监控饥饿值...');
+  while (true) {
+    // 检查当前饥饿值，如果低于15则自动进食
+    if (bot.food < 15) {
+      console.log(`当前饥饿值为 ${bot.food}，需要进食`);
+      await autoEat();
+    }
+    
+    // 每5秒检查一次
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
 }
 
 // 从容器(木桶/箱子)中获取材料
@@ -476,9 +506,9 @@ async function getMaterialsFromChests(materialCount) {
 
   // 获取材料完成后传送回搭建平台
   console.log('获取材料完成，传送到搭建平台...');
-  // 传送到搭建平台（坐标为示例，实际需要改动）
+  // 传送到搭建平台
   console.log('传送到搭建平台...');
-  let tpCommand2 = `/home`;
+  let tpCommand2 = `/res tp hpdth.dth`;
   console.log(`执行命令: ${tpCommand2}`);
   bot.chat(tpCommand2);
 
@@ -491,7 +521,7 @@ async function getMaterialsFromChests(materialCount) {
   await new Promise(resolve => setTimeout(resolve, 5000));
 }
 
-// 使用/setblock命令建造投影（按区域划分建造）
+// 建造投影（按区域划分建造）
 async function buildWithSetblockByRegion(schematicData, startPos) {
   console.log('开始按区域建造投影...');
 
@@ -722,9 +752,6 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
         // 从容器(木桶/箱子)中获取区域所需的全部材料
         await getMaterialsFromChests(materialCount);
 
-        // 检查并获取食物
-        await checkAndFetchFood();
-
         // 遍历区域内的每个方块
         for (let y = 0; y < height; y++) {
           for (let z = startZ; z < endZ && z <= length - 1; z++) {  // 确保z不超过length-1
@@ -749,6 +776,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
 
                     // 创建移动到方块附近的目标
                     const goal = new GoalNear(worldPos.x, worldPos.y, worldPos.z, 2); // 移动到距离方块2格范围内
+                    bot.pathfinder.setGoal(goal);
 
                     // 使用Promise来处理pathfinder的移动
                     await new Promise((resolve, reject) => {
@@ -774,9 +802,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                           reject(new Error('无法找到路径到方块'));
                         }
                       });
-
-                      // 开始移动
-                      bot.pathfinder.setGoal(goal);
+                    }).catch(err => {
+                      console.log(`移动失败: ${err.message}`);
+                      return; // 移动失败则跳过放置
                     });
                   }
 
@@ -839,6 +867,11 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   } else {
                     console.log(`无法找到参考方块 at (${worldPos.x}, ${worldPos.y - 1}, ${worldPos.z})`);
                   }
+                  // 注意：实际的放置逻辑需要根据mineflayer的API来实现
+                  // 这里只是一个示例，表示我们不再使用/setblock命令
+
+                  // 添加延迟以避免操作过快
+                  await new Promise(resolve => setTimeout(resolve, 0.001));
                 }
               }
             }
@@ -906,14 +939,8 @@ bot.on('spawn', async () => {
   }
   console.log('所有物品已丢弃');
 
-  // 启动定时检查饥饿值的任务
-  console.log('启动定时检查饥饿值任务...');
-  setInterval(async () => {
-    if (bot.food < 15) {
-      console.log(`检测到饥饿值过低: ${bot.food}，开始自动进食...`);
-      await autoEat();
-    }
-  }, 30000); // 每30秒检查一次
+  // 启动实时监控饥饿值
+  monitorHunger();
 
   main();
 });
