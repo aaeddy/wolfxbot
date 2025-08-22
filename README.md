@@ -1,4 +1,4 @@
-# 本 README 文件仅为 painting.js 和 test_projection.js 的说明文档
+# 本 README 文件仅为 painting.js 的说明文档
 
 # Painting Bot
 
@@ -30,11 +30,6 @@
    ```bash
    npm start
    ```
-
-## 配置说明
-
-- `materialChests`: 材料箱坐标列表，每个箱子对应一种颜色的地毯
-- `buildStartX`, `buildStartY`, `buildStartZ`: 建造平面的起始坐标
 
 ## 注意事项
 
