@@ -687,21 +687,12 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
           }
 
           initialBlockCount++;
-
-          // 添加延迟以避免操作过快
-          await new Promise(resolve => setTimeout(resolve, 0.001));
         }
       }
     }
   }
 
   console.log(`前128个方块建造完成，实际建造了 ${initialBlockCount} 个方块`);
-
-  // 使用/clear指令清空背包
-  console.log('清空背包...');
-  const clearCommand = `/clear @s`;
-  console.log(`执行命令: ${clearCommand}`);
-  bot.chat(clearCommand);
 
   // 等待一段时间确保前128个方块建造完成
   console.log('等待5秒以确保前128个方块建造完成...');
@@ -867,11 +858,6 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   } else {
                     console.log(`无法找到参考方块 at (${worldPos.x}, ${worldPos.y - 1}, ${worldPos.z})`);
                   }
-                  // 注意：实际的放置逻辑需要根据mineflayer的API来实现
-                  // 这里只是一个示例，表示我们不再使用/setblock命令
-
-                  // 添加延迟以避免操作过快
-                  await new Promise(resolve => setTimeout(resolve, 0.001));
                 }
               }
             }
@@ -881,11 +867,21 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
 
       console.log(`区域 [${rx},${rz}] 建造完成`);
 
-      // 使用/clear指令清空背包
-      console.log('清空背包...');
-      const clearCommand = `/clear @s`;
-      console.log(`执行命令: ${clearCommand}`);
-      bot.chat(clearCommand);
+      // 丢弃所有非食物物品
+      console.log('丢弃所有非食物物品...');
+      const items = bot.inventory.items();
+      for (const item of items) {
+        // 保留食物物品（cooked_cod）
+        if (item.name !== 'cooked_cod') {
+          try {
+            await bot.toss(item.type, null, item.count);
+            console.log(`已丢弃 ${item.count}x ${item.name}`);
+          } catch (err) {
+            console.log(`丢弃 ${item.name} 失败: ${err.message}`);
+          }
+        }
+      }
+      console.log('非食物物品已丢弃');
 
       // 等待一段时间确保该区域建造完成
       console.log(`等待5秒以确保区域 [${rx},${rz}] 建造完成...`);
