@@ -5,23 +5,72 @@ const { Vec3 } = require('vec3');
 const { pathfinder, Movements, goals: { GoalNear } } = require('mineflayer-pathfinder');
 const inventoryViewer = require('mineflayer-web-inventory');
 
-// Bot 配置
-const bot = mineflayer.createBot({
-  host: 'wolfx.jp',
-  port: 25565,
-  username: 'paintingbot',
-  version: '1.20.4',
-  auth: 'microsoft'
-});
+let bot;
 
-// 加载pathfinder插件
-bot.loadPlugin(pathfinder);
+function createBot () {
+  // Bot 配置
+  bot = mineflayer.createBot({
+    host: 'wolfx.jp',
+    port: 25565,
+    username: 'paintingbot',
+    version: '1.20.4',
+    auth: 'microsoft'
+  });
 
-// 初始化 Web Inventory
-inventoryViewer(bot);
+  // 加载pathfinder插件
+  bot.loadPlugin(pathfinder);
+
+  // 初始化 Web Inventory
+  inventoryViewer(bot);
+
+  // 错误处理
+  bot.on('error', (err) => {
+    console.log('机器人发生错误:', err);
+  });
+
+  bot.on('kicked', (reason) => {
+    console.log('机器人被踢出服务器:', reason);
+  });
+
+  // 断线重连
+  bot.on('end', () => {
+    console.log('机器人断线，5秒后尝试重连...');
+    setTimeout(createBot, 5000);
+  });
+
+  // 机器人连接事件
+  bot.on('spawn', async () => {
+    console.log('机器人已连接到服务器');
+
+    // 开启悬空状态
+    bot.creative.startFlying()
+    // 丢弃所有物品
+    console.log('正在丢弃所有物品...');
+    const items = bot.inventory.items();
+    for (const item of items) {
+      try {
+        await bot.toss(item.type, null, item.count);
+        console.log(`已丢弃 ${item.count}x ${item.name}`);
+      } catch (err) {
+        console.log(`丢弃 ${item.name} 失败: ${err.message}`);
+      }
+    }
+    console.log('所有物品已丢弃');
+
+    // 启动实时监控饥饿值
+    monitorHunger();
+    
+    main();
+  });
+
+  // 添加更多调试信息
+  bot.on('chat', (username, message) => {
+    console.log(`${username}: ${message}`);
+  });
+}
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37440, 193, 13887);
+const buildStartPos = new Vec3(37439, 195, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -373,6 +422,7 @@ async function getMaterialsFromChests(materialCount) {
   console.log('正在从容器(木桶/箱子)中获取建造所需材料...');
 
   // 传送到hpdth位置
+  await new Promise(resolve => setTimeout(resolve, 3000));
   console.log('传送到hpdth位置...');
   let tpCommand1 = `/res tp hpdth`;
   console.log(`执行命令: ${tpCommand1}`);
@@ -507,6 +557,7 @@ async function getMaterialsFromChests(materialCount) {
   // 获取材料完成后传送回搭建平台
   console.log('获取材料完成，传送到搭建平台...');
   // 传送到搭建平台
+  await new Promise(resolve => setTimeout(resolve, 3000));
   console.log('传送到搭建平台...');
   let tpCommand2 = `/res tp hpdth.dth`;
   console.log(`执行命令: ${tpCommand2}`);
@@ -527,7 +578,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
 
   const { schematic, width, height, length } = schematicData;
 
-  // 传送到搭建平台（坐标为示例，实际需要改动）
+  // 传送到搭建平台
+  await new Promise(resolve => setTimeout(resolve, 3000));
   console.log('传送到hpdth位置...');
   let tpCommand = `/res tp hpdth`;
   console.log(`执行命令: ${tpCommand}`);
@@ -594,78 +646,67 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
             startPos.z + z
           );
 
-          // 检查bot是否在方块附近，如果距离大于3格则移动到方块附近
+          // 检查bot是否在方块附近，如果不在则直接移动到方块附近
           const distance = bot.entity.position.distanceTo(worldPos);
           if (distance > 3) {  // 假设3个方块为有效距离
-            console.log(`玩家距离方块过远 (${distance.toFixed(2)} 格)，移动到方块附近: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
-            // 使用pathfinder移动到方块附近
-            const goal = new GoalNear(worldPos.x, worldPos.y, worldPos.z, 2); // 移动到距离方块2格范围内
-            bot.pathfinder.setGoal(goal);
+            console.log(`玩家距离方块过远 (${distance.toFixed(2)} 格)，直接移动到方块附近: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
 
-            // 等待移动完成，设置超时时间
-            await new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                bot.pathfinder.stop(); // 停止路径寻找
-                reject(new Error('移动超时'));
-              }, 10000); // 10秒超时
+            // 计算需要移动的距离
+            let dx = (worldPos.x - bot.entity.position.x) + 0.5;
+            let dy = worldPos.y - bot.entity.position.y;
+            let dz = (worldPos.z - bot.entity.position.z) + 0.5;
 
-              bot.on('goal_reached', () => {
-                clearTimeout(timeout);
-                resolve();
-              });
+            console.error(dx, dy, dz)
 
-              bot.on('path_update', (results) => {
-                if (results.status === 'noPath') {
-                  clearTimeout(timeout);
-                  reject(new Error('无法找到路径'));
-                }
-              });
-            }).catch(err => {
-              console.log(`移动失败: ${err.message}`);
-              return; // 移动失败则跳过放置
-            });
+            // 限制x和z轴单次移动最大32格
+            while (Math.abs(dx) > 32 || Math.abs(dz) > 32) {
+              // 计算本次移动的距离
+              const moveDx = Math.abs(dx) > 32 ? (dx > 0 ? 32 : -32) : dx;
+              const moveDz = Math.abs(dz) > 32 ? (dz > 0 ? 32 : -32) : dz;
+              
+              // 执行移动
+              bot.entity.position.x += moveDx;
+              bot.entity.position.z += moveDz;
+              
+              // 更新剩余距离
+              dx -= moveDx;
+              dz -= moveDz;
+              
+              // 添加短暂延迟
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            // 移动剩余距离
+            bot.entity.position.x += dx;
+            bot.entity.position.y += dy;
+            bot.entity.position.z += dz;
+            
+            console.log('已成功移动到方块附近');
           }
-
-          // 使用正常的放置方块方式
-          console.log(`放置方块: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+      
+        // 检查目标位置是否已存在方块
+        const existingBlock = bot.blockAt(worldPos);
+        if (existingBlock && existingBlock.name !== 'air') {
+          console.log(`目标位置已存在方块: ${existingBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})，跳过放置`);
+          initialBlockCount++; // 即使跳过放置也要增加计数器
+          continue; // 跳过当前方块的放置操作
+        }
+      
+        // 使用正常的放置方块方式
+        console.log(`放置方块: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
           // 获取要放置方块位置下方的方块作为参考方块
           const referenceBlock = bot.blockAt(worldPos.offset(0, -1, 0));
 
           // 检查bot是否站在要放置方块的位置上
           const botPos = bot.entity.position;
           if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y && Math.floor(botPos.z) === worldPos.z) {
-            console.log('Bot站在要放置方块的位置上，需要移动到z+1位置');
-            // 创建移动到z+1位置的目标
-            const moveGoal = new GoalNear(worldPos.x, worldPos.y, worldPos.z + 1, 0.5); // 移动到距离目标z+1位置0.5格范围内
-
-            // 使用Promise来处理pathfinder的移动
-            await new Promise((resolve, reject) => {
-              // 设置10秒超时
-              const timeout = setTimeout(() => {
-                bot.pathfinder.stop();
-                console.log('移动超时');
-                reject(new Error('移动超时'));
-              }, 10000);
-
-              // 监听移动完成事件
-              bot.once('goal_reached', () => {
-                clearTimeout(timeout);
-                console.log('已成功移动到z+1位置');
-                resolve();
-              });
-
-              // 监听移动失败事件
-              bot.once('path_update', (results) => {
-                if (results.status === 'noPath') {
-                  clearTimeout(timeout);
-                  console.log('无法找到路径到z+1位置');
-                  reject(new Error('无法找到路径到z+1位置'));
-                }
-              });
-
-              // 开始移动
-              bot.pathfinder.setGoal(moveGoal);
-            });
+            console.log('Bot站在要放置方块的位置上，需要执行 vclip 动作');
+            // 开启悬空状态
+            bot.creative.startFlying()
+            // .vclip 1.5
+            bot.entity.position.y += 1.5
+            // 在悬空状态下放置其脚下方块
+            console.log('在悬空状态下放置方块');
           }
 
           if (referenceBlock) {
@@ -685,7 +726,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
           } else {
             console.log(`无法找到参考方块 at (${worldPos.x}, ${worldPos.y - 1}, ${worldPos.z})`);
           }
-
+          // 停止悬空状态
+          // bot.creative.stopFlying()
           initialBlockCount++;
         }
       }
@@ -760,43 +802,49 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                     startPos.z + z
                   );
 
-                  // 检查bot是否在方块附近，如果不在则使用pathfinder移动到方块附近
+                  // 检查bot是否在方块附近，如果不在则直接移动到方块附近
                   const distance = bot.entity.position.distanceTo(worldPos);
                   if (distance > 3) {  // 假设3个方块为有效距离
-                    console.log(`玩家距离方块过远 (${distance.toFixed(2)} 格)，使用pathfinder移动到方块附近: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                    console.log(`玩家距离方块过远 (${distance.toFixed(2)} 格)，直接移动到方块附近: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
 
-                    // 创建移动到方块附近的目标
-                    const goal = new GoalNear(worldPos.x, worldPos.y, worldPos.z, 2); // 移动到距离方块2格范围内
-                    bot.pathfinder.setGoal(goal);
+                    // 计算需要移动的距离
+                    let dx = (worldPos.x - bot.entity.position.x) + 0.5;
+                    let dy = worldPos.y - bot.entity.position.y;
+                    let dz = (worldPos.z - bot.entity.position.z) + 0.5;
 
-                    // 使用Promise来处理pathfinder的移动
-                    await new Promise((resolve, reject) => {
-                      // 设置10秒超时
-                      const timeout = setTimeout(() => {
-                        bot.pathfinder.stop();
-                        console.log('pathfinder移动超时');
-                        reject(new Error('pathfinder移动超时'));
-                      }, 60000);
+                    console.error(dx, dy, dz)
 
-                      // 监听移动完成事件
-                      bot.once('goal_reached', () => {
-                        clearTimeout(timeout);
-                        console.log('已成功移动到方块附近');
-                        resolve();
-                      });
+                    // 限制x和z轴单次移动最大32格
+                    while (Math.abs(dx) > 32 || Math.abs(dz) > 32) {
+                      // 计算本次移动的距离
+                      const moveDx = Math.abs(dx) > 32 ? (dx > 0 ? 32 : -32) : dx;
+                      const moveDz = Math.abs(dz) > 32 ? (dz > 0 ? 32 : -32) : dz;
+                      
+                      // 执行移动
+                      bot.entity.position.x += moveDx;
+                      bot.entity.position.z += moveDz;
+                      
+                      // 更新剩余距离
+                      dx -= moveDx;
+                      dz -= moveDz;
+                      
+                      // 添加短暂延迟
+                      await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                    
+                    // 移动剩余距离
+                    bot.entity.position.x += dx;
+                    bot.entity.position.z += dz;
+                    
+                    console.log('已成功移动到方块附近');
+                  }
 
-                      // 监听移动失败事件
-                      bot.once('path_update', (results) => {
-                        if (results.status === 'noPath') {
-                          clearTimeout(timeout);
-                          console.log('无法找到路径到方块');
-                          reject(new Error('无法找到路径到方块'));
-                        }
-                      });
-                    }).catch(err => {
-                      console.log(`移动失败: ${err.message}`);
-                      return; // 移动失败则跳过放置
-                    });
+                  // 检查目标位置是否已存在方块
+                  const existingBlock = bot.blockAt(worldPos);
+                  if (existingBlock && existingBlock.name !== 'air') {
+                    console.log(`目标位置已存在方块: ${existingBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})，跳过放置`);
+                    initialBlockCount++; // 即使跳过放置也要增加计数器
+                    continue; // 跳过当前方块的放置操作
                   }
 
                   // 使用正常的放置方块方式
@@ -807,38 +855,13 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   // 检查bot是否站在要放置方块的位置上
                   const botPos = bot.entity.position;
                   if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y - 1 && Math.floor(botPos.z) === worldPos.z) {
-                    console.log('Bot站在要放置方块的位置上，需要移动到z+1位置');
-                    // 创建移动到z+1位置的目标
-                    const moveGoal = new GoalNear(worldPos.x, worldPos.y - 1, worldPos.z + 1, 0.5); // 移动到距离目标z+1位置0.5格范围内
-
-                    // 使用Promise来处理pathfinder的移动
-                    await new Promise((resolve, reject) => {
-                      // 设置10秒超时
-                      const timeout = setTimeout(() => {
-                        bot.pathfinder.stop();
-                        console.log('移动超时');
-                        reject(new Error('移动超时'));
-                      }, 10000);
-
-                      // 监听移动完成事件
-                      bot.once('goal_reached', () => {
-                        clearTimeout(timeout);
-                        console.log('已成功移动到z+1位置');
-                        resolve();
-                      });
-
-                      // 监听移动失败事件
-                      bot.once('path_update', (results) => {
-                        if (results.status === 'noPath') {
-                          clearTimeout(timeout);
-                          console.log('无法找到路径到z+1位置');
-                          reject(new Error('无法找到路径到z+1位置'));
-                        }
-                      });
-
-                      // 开始移动
-                      bot.pathfinder.setGoal(moveGoal);
-                    });
+                    console.log('Bot站在要放置方块的位置上，需要执行 vclip 操作');
+                    // 开启悬空状态
+                    bot.creative.startFlying()
+                    // .vclip 1.5
+                    bot.entity.position.y += 1.5
+                    // 在悬空状态下放置其脚下方块
+                    console.log('在悬空状态下放置方块');
                   }
 
                   if (referenceBlock) {
@@ -849,6 +872,25 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                         await bot.equip(blockItem, 'hand');
                         // 放置方块，使用(0, 1, 0)作为方向向量表示在参考方块上方放置
                         await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+                        
+                        // 检查方块是否放置成功，如果没有则尝试重新放置
+                        let placedBlock = bot.blockAt(worldPos);
+                        let attempts = 0;
+                        const maxAttempts = 3; // 最多尝试3次
+                        
+                        while ((!placedBlock || placedBlock.name === 'air') && attempts < maxAttempts) {
+                          attempts++;
+                          console.log(`方块放置失败，尝试重新放置 (${attempts}/${maxAttempts}): ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                          await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
+                          await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+                          placedBlock = bot.blockAt(worldPos);
+                        }
+                        
+                        if (placedBlock && placedBlock.name !== 'air') {
+                          console.log(`方块放置成功: ${placedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                        } else {
+                          console.log(`方块放置失败，已达到最大尝试次数: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                        }
                       } else {
                         console.log(`背包中没有找到方块: ${block.name}`);
                       }
@@ -858,6 +900,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   } else {
                     console.log(`无法找到参考方块 at (${worldPos.x}, ${worldPos.y - 1}, ${worldPos.z})`);
                   }
+                  // 停止悬空状态
+                  // bot.creative.stopFlying()
                 }
               }
             }
@@ -890,8 +934,6 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
   }
 }
 
-console.log('所有区域建造完成');
-
 // 主函数
 async function main() {
   try {
@@ -918,39 +960,5 @@ async function main() {
   }
 }
 
-// 机器人连接事件
-bot.on('spawn', async () => {
-  console.log('机器人已连接到服务器');
-
-  // 丢弃所有物品
-  console.log('正在丢弃所有物品...');
-  const items = bot.inventory.items();
-  for (const item of items) {
-    try {
-      await bot.toss(item.type, null, item.count);
-      console.log(`已丢弃 ${item.count}x ${item.name}`);
-    } catch (err) {
-      console.log(`丢弃 ${item.name} 失败: ${err.message}`);
-    }
-  }
-  console.log('所有物品已丢弃');
-
-  // 启动实时监控饥饿值
-  monitorHunger();
-
-  main();
-});
-
-// 错误处理
-bot.on('error', (err) => {
-  console.error('机器人发生错误:', err);
-});
-
-bot.on('kicked', (reason) => {
-  console.error('机器人被踢出服务器:', reason);
-});
-
-// 添加更多调试信息
-bot.on('chat', (username, message) => {
-  console.log(`${username}: ${message}`);
-});
+// 启动机器人
+createBot();
