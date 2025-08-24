@@ -70,7 +70,7 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 195, 13887);
+const buildStartPos = new Vec3(37439, 197, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -666,6 +666,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
               
               // 执行移动
               bot.entity.position.x += moveDx;
+              await new Promise(resolve => setTimeout(resolve, 10)); // 等待10毫秒
               bot.entity.position.z += moveDz;
               
               // 更新剩余距离
@@ -673,7 +674,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
               dz -= moveDz;
               
               // 添加短暂延迟
-              await new Promise(resolve => setTimeout(resolve, 100));
+              // await new Promise(resolve => setTimeout(resolve, 100));
             }
             
             // 移动剩余距离
@@ -702,9 +703,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
           if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y && Math.floor(botPos.z) === worldPos.z) {
             console.log('Bot站在要放置方块的位置上，需要执行 vclip 动作');
             // 开启悬空状态
-            bot.creative.startFlying()
-            // .vclip 1.5
-            bot.entity.position.y += 1.5
+            bot.creative.startFlying();
+            // .vclip 1
+            bot.entity.position.y += 1;
             // 在悬空状态下放置其脚下方块
             console.log('在悬空状态下放置方块');
           }
@@ -748,9 +749,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
   // 按区域依次建造剩余部分
   for (let rz = 0; rz < regionsZ; rz++) {
     for (let rx = 0; rx < regionsX; rx++) {
-      const startX = rx * regionSize;
+      const startX = rx * regionSize + 1;  // X轴从1开始
       const startZ = rz * regionSize + 1;  // Z轴从1开始
-      const endX = Math.min(startX + regionSize, width);
+      const endX = Math.min(startX + regionSize, width + 1); // 调整结束位置
       const endZ = Math.min(startZ + regionSize, length + 1);  // 调整结束位置
 
       // 确保区域在有效范围内
@@ -822,6 +823,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                       
                       // 执行移动
                       bot.entity.position.x += moveDx;
+                      await new Promise(resolve => setTimeout(resolve, 10)); // 等待10毫秒
                       bot.entity.position.z += moveDz;
                       
                       // 更新剩余距离
@@ -829,7 +831,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                       dz -= moveDz;
                       
                       // 添加短暂延迟
-                      await new Promise(resolve => setTimeout(resolve, 100));
+                      // await new Promise(resolve => setTimeout(resolve, 100));
                     }
                     
                     // 移动剩余距离
@@ -857,9 +859,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y - 1 && Math.floor(botPos.z) === worldPos.z) {
                     console.log('Bot站在要放置方块的位置上，需要执行 vclip 操作');
                     // 开启悬空状态
-                    bot.creative.startFlying()
-                    // .vclip 1.5
-                    bot.entity.position.y += 1.5
+                    bot.creative.startFlying();
+                    // .vclip 1
+                    bot.entity.position.y += 1;
                     // 在悬空状态下放置其脚下方块
                     console.log('在悬空状态下放置方块');
                   }
