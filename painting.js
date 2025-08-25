@@ -70,7 +70,7 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 197, 13887);
+const buildStartPos = new Vec3(37439, 203, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -646,44 +646,10 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
             startPos.z + z
           );
 
-          // 检查bot是否在方块附近，如果不在则直接移动到方块附近
-          const distance = bot.entity.position.distanceTo(worldPos);
-          if (distance > 3) {  // 假设3个方块为有效距离
-            console.log(`玩家距离方块过远 (${distance.toFixed(2)} 格)，直接移动到方块附近: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
-
-            // 计算需要移动的距离
-            let dx = (worldPos.x - bot.entity.position.x) + 0.5;
-            let dy = worldPos.y - bot.entity.position.y;
-            let dz = (worldPos.z - bot.entity.position.z) + 0.5;
-
-            console.error(dx, dy, dz)
-
-            // 限制x和z轴单次移动最大32格
-            while (Math.abs(dx) > 32 || Math.abs(dz) > 32) {
-              // 计算本次移动的距离
-              const moveDx = Math.abs(dx) > 32 ? (dx > 0 ? 32 : -32) : dx;
-              const moveDz = Math.abs(dz) > 32 ? (dz > 0 ? 32 : -32) : dz;
-              
-              // 执行移动
-              bot.entity.position.x += moveDx;
-              await new Promise(resolve => setTimeout(resolve, 10)); // 等待10毫秒
-              bot.entity.position.z += moveDz;
-              
-              // 更新剩余距离
-              dx -= moveDx;
-              dz -= moveDz;
-              
-              // 添加短暂延迟
-              // await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            
-            // 移动剩余距离
-            bot.entity.position.x += dx;
-            bot.entity.position.y += dy;
-            bot.entity.position.z += dz;
-            
-            console.log('已成功移动到方块附近');
-          }
+          // 移动到方块位置
+          bot.entity.position.x = worldPos.x + 0.5;
+          bot.entity.position.y = worldPos.y + 1;
+          bot.entity.position.z = worldPos.z + 0.5;
       
         // 检查目标位置是否已存在方块
         const existingBlock = bot.blockAt(worldPos);
@@ -718,6 +684,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                 await bot.equip(blockItem, 'hand');
                 // 放置方块，使用(0, 1, 0)作为方向向量表示在参考方块上方放置
                 await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+                // 添加10ms延迟
+                await new Promise(resolve => setTimeout(resolve, 10));
               } else {
                 console.log(`背包中没有找到方块: ${block.name}`);
               }
@@ -803,43 +771,11 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                     startPos.z + z
                   );
 
-                  // 检查bot是否在方块附近，如果不在则直接移动到方块附近
-                  const distance = bot.entity.position.distanceTo(worldPos);
-                  if (distance > 3) {  // 假设3个方块为有效距离
-                    console.log(`玩家距离方块过远 (${distance.toFixed(2)} 格)，直接移动到方块附近: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                  console.log(`(${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
 
-                    // 计算需要移动的距离
-                    let dx = (worldPos.x - bot.entity.position.x) + 0.5;
-                    let dy = worldPos.y - bot.entity.position.y;
-                    let dz = (worldPos.z - bot.entity.position.z) + 0.5;
-
-                    console.error(dx, dy, dz)
-
-                    // 限制x和z轴单次移动最大32格
-                    while (Math.abs(dx) > 32 || Math.abs(dz) > 32) {
-                      // 计算本次移动的距离
-                      const moveDx = Math.abs(dx) > 32 ? (dx > 0 ? 32 : -32) : dx;
-                      const moveDz = Math.abs(dz) > 32 ? (dz > 0 ? 32 : -32) : dz;
-                      
-                      // 执行移动
-                      bot.entity.position.x += moveDx;
-                      await new Promise(resolve => setTimeout(resolve, 10)); // 等待10毫秒
-                      bot.entity.position.z += moveDz;
-                      
-                      // 更新剩余距离
-                      dx -= moveDx;
-                      dz -= moveDz;
-                      
-                      // 添加短暂延迟
-                      // await new Promise(resolve => setTimeout(resolve, 100));
-                    }
-                    
-                    // 移动剩余距离
-                    bot.entity.position.x += dx;
-                    bot.entity.position.z += dz;
-                    
-                    console.log('已成功移动到方块附近');
-                  }
+                  // 移动到方块位置
+                  bot.entity.position.x = worldPos.x + 0.5;
+                  bot.entity.position.z = worldPos.z + 0.5;
 
                   // 检查目标位置是否已存在方块
                   const existingBlock = bot.blockAt(worldPos);
@@ -874,6 +810,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                         await bot.equip(blockItem, 'hand');
                         // 放置方块，使用(0, 1, 0)作为方向向量表示在参考方块上方放置
                         await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+                        // 添加10ms延迟
+                        await new Promise(resolve => setTimeout(resolve, 10));
                         
                         // 检查方块是否放置成功，如果没有则尝试重新放置
                         let placedBlock = bot.blockAt(worldPos);
