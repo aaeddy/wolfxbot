@@ -11,6 +11,7 @@
     "mineflayer-auto-eat": "^5.0.3",
     "mineflayer-pathfinder": "^2.4.5",
     "mineflayer-web-inventory": "^1.3.0",
+    "node-notifier": "^10.0.1",
     "prismarine-schematic": "^1.2.3",
     "vec3": "^0.1.7"
   },

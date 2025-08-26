@@ -2,6 +2,7 @@ const mineflayer = require('mineflayer');
 const fs = require('fs').promises;
 const { Schematic } = require('prismarine-schematic');
 const { Vec3 } = require('vec3');
+const notifier = require('node-notifier');
 const { pathfinder, Movements, goals: { GoalNear } } = require('mineflayer-pathfinder');
 const inventoryViewer = require('mineflayer-web-inventory');
 
@@ -41,7 +42,6 @@ function createBot () {
   // 机器人连接事件
   bot.on('spawn', async () => {
     console.log('机器人已连接到服务器');
-
     // 开启悬空状态
     bot.creative.startFlying()
     // 丢弃所有物品
@@ -70,7 +70,7 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 203, 13887);
+const buildStartPos = new Vec3(37439, 205, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -517,6 +517,45 @@ async function getMaterialsFromChests(materialCount) {
         if (totalCount < count) {
           console.log(`${chestInfo.type}中 ${blockName} 数量不足，需要 ${count} 个，但只有 ${totalCount} 个`);
           chest.close();
+          
+          // 如果是地毯材料，尝试从y+1坐标的容器获取
+          if (blockName.includes('carpet') && !['smooth_stone', 'food'].includes(blockName)) {
+            console.log(`尝试从y+1坐标的容器获取${blockName}...`);
+            const yPlus1Pos = new Vec3(chestInfo.pos.x, chestInfo.pos.y + 1, chestInfo.pos.z);
+            const yPlus1ChestBlock = bot.blockAt(yPlus1Pos);
+            
+            if (yPlus1ChestBlock && ['chest', 'barrel'].includes(yPlus1ChestBlock.name)) {
+              try {
+                const yPlus1Chest = await bot.openContainer(yPlus1ChestBlock);
+                const yPlus1Items = yPlus1Chest.containerItems().filter(item => item.name === blockName);
+                const yPlus1Total = yPlus1Items.reduce((sum, item) => sum + item.count, 0);
+                
+                if (yPlus1Total > 0) {
+                  let remainingCount = count - totalCount;
+                  while (remainingCount > 0) {
+                    const item = yPlus1Chest.containerItems().find(i => i.name === blockName && i.count > 0);
+                    if (!item) break;
+                    
+                    const takeCount = Math.min(remainingCount, item.count, 64);
+                    await yPlus1Chest.withdraw(item.type, null, takeCount);
+                    console.log(`从y+1容器成功拿取 ${takeCount} 个 ${blockName}`);
+                    remainingCount -= takeCount;
+                  }
+                  yPlus1Chest.close();
+                  if (remainingCount <= 0) continue; // 成功获取足够材料
+                } else {
+                  console.log(`y+1容器中没有找到 ${blockName}`);
+                  yPlus1Chest.close();
+                }
+              } catch (err) {
+                console.log(`打开y+1容器失败: ${err.message}`);
+              }
+            } else {
+              console.log(`y+1坐标(${yPlus1Pos.x},${yPlus1Pos.y},${yPlus1Pos.z})不存在有效容器`);
+            }
+          }
+          
+          // 如果不是地毯材料或y+1容器也没有足够材料，跳过
           continue;
         }
 
@@ -669,7 +708,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
           if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y && Math.floor(botPos.z) === worldPos.z) {
             console.log('Bot站在要放置方块的位置上，需要执行 vclip 动作');
             // 开启悬空状态
-            bot.creative.startFlying();
+            // bot.creative.startFlying();
             // .vclip 1
             bot.entity.position.y += 1;
             // 在悬空状态下放置其脚下方块
@@ -690,7 +729,32 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                 console.log(`背包中没有找到方块: ${block.name}`);
               }
             } catch (err) {
-              console.log(`放置方块失败: ${err.message}`);
+              let attempts = 0;
+              const maxAttempts = 3; // 最多尝试3次
+              while (attempts < maxAttempts) {
+                attempts++;
+                console.log(`放置方块失败: ${err.message}，尝试重新放置 (${attempts}/${maxAttempts}): ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
+                try {
+                    // 重试前检查并确保手中有正确的方块
+                    const blockItem = bot.inventory.items().find(item => item.name === block.name);
+                    if (!blockItem) {
+                      console.log(`背包中没有找到方块: ${block.name}，无法继续重试`);
+                      break;
+                    }
+                    await bot.equip(blockItem, 'hand');
+                    await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+                  let retryPlacedBlock = bot.blockAt(worldPos);
+                  if (retryPlacedBlock && retryPlacedBlock.name !== 'air') {
+                    console.log(`方块放置成功: ${retryPlacedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                    break;
+                  }
+                } catch (retryErr) {
+                  if (attempts >= maxAttempts) {
+                    console.log(`方块放置失败，已达到最大尝试次数: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                  }
+                }
+              }
             }
           } else {
             console.log(`无法找到参考方块 at (${worldPos.x}, ${worldPos.y - 1}, ${worldPos.z})`);
@@ -754,6 +818,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
         // 从容器(木桶/箱子)中获取区域所需的全部材料
         await getMaterialsFromChests(materialCount);
 
+        // 记录上一个z坐标
+        let lastZ = -1;
         // 遍历区域内的每个方块
         for (let y = 0; y < height; y++) {
           for (let z = startZ; z < endZ && z <= length - 1; z++) {  // 确保z不超过length-1
@@ -771,11 +837,17 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                     startPos.z + z
                   );
 
-                  console.log(`(${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
-
                   // 移动到方块位置
                   bot.entity.position.x = worldPos.x + 0.5;
+                  await new Promise(resolve => setTimeout(resolve, 20));
                   bot.entity.position.z = worldPos.z + 0.5;
+                  await new Promise(resolve => setTimeout(resolve, 20));
+
+                  // 检查 z 是否变化
+                  if (z !== lastZ) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    lastZ = z; // 更新 lastZ
+                  }
 
                   // 检查目标位置是否已存在方块
                   const existingBlock = bot.blockAt(worldPos);
@@ -795,7 +867,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y - 1 && Math.floor(botPos.z) === worldPos.z) {
                     console.log('Bot站在要放置方块的位置上，需要执行 vclip 操作');
                     // 开启悬空状态
-                    bot.creative.startFlying();
+                    // bot.creative.startFlying();
                     // .vclip 1
                     bot.entity.position.y += 1;
                     // 在悬空状态下放置其脚下方块
@@ -810,32 +882,41 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                         await bot.equip(blockItem, 'hand');
                         // 放置方块，使用(0, 1, 0)作为方向向量表示在参考方块上方放置
                         await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
-                        // 添加10ms延迟
-                        await new Promise(resolve => setTimeout(resolve, 10));
-                        
                         // 检查方块是否放置成功，如果没有则尝试重新放置
                         let placedBlock = bot.blockAt(worldPos);
-                        let attempts = 0;
-                        const maxAttempts = 3; // 最多尝试3次
-                        
-                        while ((!placedBlock || placedBlock.name === 'air') && attempts < maxAttempts) {
-                          attempts++;
-                          console.log(`方块放置失败，尝试重新放置 (${attempts}/${maxAttempts}): ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
-                          await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
-                          await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
-                          placedBlock = bot.blockAt(worldPos);
-                        }
-                        
                         if (placedBlock && placedBlock.name !== 'air') {
                           console.log(`方块放置成功: ${placedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
-                        } else {
-                          console.log(`方块放置失败，已达到最大尝试次数: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
                         }
                       } else {
                         console.log(`背包中没有找到方块: ${block.name}`);
                       }
                     } catch (err) {
-                      console.log(`放置方块失败: ${err.message}`);
+                      let attempts = 0;
+                      const maxAttempts = 3; // 最多尝试3次
+                      while (attempts < maxAttempts) {
+                        attempts++;
+                        console.log(`放置方块失败: ${err.message}，尝试重新放置 (${attempts}/${maxAttempts}): ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
+                        try {
+                            // 重试前检查并确保手中有正确的方块
+                            const blockItem = bot.inventory.items().find(item => item.name === block.name);
+                            if (!blockItem) {
+                              console.log(`背包中没有找到方块: ${block.name}，无法继续重试`);
+                              break;
+                            }
+                            await bot.equip(blockItem, 'hand');
+                            await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+                          let retryPlacedBlock = bot.blockAt(worldPos);
+                          if (retryPlacedBlock && retryPlacedBlock.name !== 'air') {
+                            console.log(`方块放置成功: ${retryPlacedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                            break;
+                          }
+                        } catch (retryErr) {
+                          if (attempts >= maxAttempts) {
+                            console.log(`方块放置失败，已达到最大尝试次数: ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                          }
+                        }
+                      }
                     }
                   } else {
                     console.log(`无法找到参考方块 at (${worldPos.x}, ${worldPos.y - 1}, ${worldPos.z})`);
@@ -850,6 +931,15 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
       }
 
       console.log(`区域 [${rx},${rz}] 建造完成`);
+
+      console.log('传送到搭建平台...');
+      let tpCommand3 = `/res tp hpdth.dth`;
+      console.log(`执行命令: ${tpCommand3}`);
+      bot.chat(tpCommand3);
+
+      // 等待传送完成
+      console.log('等待5秒以确保传送完成...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
       // 丢弃所有非食物物品
       console.log('丢弃所有非食物物品...');
@@ -891,9 +981,15 @@ async function main() {
     // 按区域建造投影
     await buildWithSetblockByRegion(schematicData, buildStartPos);
 
-    // 退出机器人
-    console.log('任务完成，退出机器人');
-    bot.quit();
+    // 建造完成
+    console.log('建造完成');
+    notifier.notify({
+      appID: 'PaintingBot',
+      icon: './success.png',
+      title: '建造完成',
+      message: ' ',
+      sound: true,
+    });
   } catch (err) {
     console.error('执行过程中发生错误:', err);
     bot.quit();
