@@ -70,7 +70,7 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 205, 13887);
+const buildStartPos = new Vec3(37439, 207, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -826,6 +826,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
             for (let x = startX; x < endX; x++) {
               // 确保不超出投影文件的实际范围
               if (z <= length - 1) {  // 确保z不超过length-1
+                const botPos = bot.entity.position;
                 const pos = new Vec3(x, y, z);
                 const block = schematic.getBlock(pos);
 
@@ -839,10 +840,13 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
 
                   // 移动到方块位置
                   bot.entity.position.x = worldPos.x + 0.5;
-                  await new Promise(resolve => setTimeout(resolve, 20));
+                  // 跨区域移动时需要等待
+                  console.error(`${worldPos}\n${botPos}`);
+                  if ((worldPos.x - botPos.x > 32) || (worldPos.z - botPos.z > 32)) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    console.log('跨区域移动，x轴已移动，等待100ms移动');
+                  }
                   bot.entity.position.z = worldPos.z + 0.5;
-                  await new Promise(resolve => setTimeout(resolve, 20));
-
                   // 检查 z 是否变化
                   if (z !== lastZ) {
                     await new Promise(resolve => setTimeout(resolve, 50));
@@ -863,7 +867,6 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   const referenceBlock = bot.blockAt(worldPos.offset(0, -1, 0));
 
                   // 检查bot是否站在要放置方块的位置上
-                  const botPos = bot.entity.position;
                   if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y - 1 && Math.floor(botPos.z) === worldPos.z) {
                     console.log('Bot站在要放置方块的位置上，需要执行 vclip 操作');
                     // 开启悬空状态
@@ -969,7 +972,7 @@ async function main() {
   try {
     console.log('开始执行主函数...');
     // 加载投影文件
-    const schematicData = await loadSchematic('./projection.schem');
+    const schematicData = await loadSchematic('./litematic/19.schem');
 
     // 输出方块信息到txt文件（按区域划分）
     await outputBlockInfoByRegion(schematicData, './block_info_output.txt');
