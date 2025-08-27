@@ -70,7 +70,7 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 207, 13887);
+const buildStartPos = new Vec3(37439, 208, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -546,16 +546,84 @@ async function getMaterialsFromChests(materialCount) {
                 } else {
                   console.log(`y+1容器中没有找到 ${blockName}`);
                   yPlus1Chest.close();
+                  
+                  // 尝试从y+2坐标的容器获取
+                  console.log(`尝试从y+2坐标的容器获取${blockName}...`);
+                  const yPlus2Pos = new Vec3(chestInfo.pos.x, chestInfo.pos.y + 2, chestInfo.pos.z);
+                  const yPlus2ChestBlock = bot.blockAt(yPlus2Pos);
+                  
+                  if (yPlus2ChestBlock && ['chest', 'barrel'].includes(yPlus2ChestBlock.name)) {
+                    try {
+                      const yPlus2Chest = await bot.openContainer(yPlus2ChestBlock);
+                      const yPlus2Items = yPlus2Chest.containerItems().filter(item => item.name === blockName);
+                      const yPlus2Total = yPlus2Items.reduce((sum, item) => sum + item.count, 0);
+                      
+                      if (yPlus2Total > 0) {
+                        while (remainingCount > 0) {
+                          const item = yPlus2Chest.containerItems().find(i => i.name === blockName && i.count > 0);
+                          if (!item) break;
+                          
+                          const takeCount = Math.min(remainingCount, item.count, 64);
+                          await yPlus2Chest.withdraw(item.type, null, takeCount);
+                          console.log(`从y+2容器成功拿取 ${takeCount} 个 ${blockName}`);
+                          remainingCount -= takeCount;
+                        }
+                        yPlus2Chest.close();
+                        if (remainingCount <= 0) continue;
+                      } else {
+                        console.log(`y+2容器中没有找到 ${blockName}`);
+                        yPlus2Chest.close();
+                      }
+                    } catch (err) {
+                      console.log(`打开y+2容器失败: ${err.message}`);
+                    }
+                  } else {
+                    console.log(`y+2坐标(${yPlus2Pos.x},${yPlus2Pos.y},${yPlus2Pos.z})不存在有效容器`);
+                  }
                 }
               } catch (err) {
                 console.log(`打开y+1容器失败: ${err.message}`);
               }
             } else {
               console.log(`y+1坐标(${yPlus1Pos.x},${yPlus1Pos.y},${yPlus1Pos.z})不存在有效容器`);
+              
+              // 尝试从y+2坐标的容器获取
+              console.log(`尝试从y+2坐标的容器获取${blockName}...`);
+              const yPlus2Pos = new Vec3(chestInfo.pos.x, chestInfo.pos.y + 2, chestInfo.pos.z);
+              const yPlus2ChestBlock = bot.blockAt(yPlus2Pos);
+              
+              if (yPlus2ChestBlock && ['chest', 'barrel'].includes(yPlus2ChestBlock.name)) {
+                try {
+                  const yPlus2Chest = await bot.openContainer(yPlus2ChestBlock);
+                  const yPlus2Items = yPlus2Chest.containerItems().filter(item => item.name === blockName);
+                  const yPlus2Total = yPlus2Items.reduce((sum, item) => sum + item.count, 0);
+                  
+                  if (yPlus2Total > 0) {
+                    while (remainingCount > 0) {
+                      const item = yPlus2Chest.containerItems().find(i => i.name === blockName && i.count > 0);
+                      if (!item) break;
+                      
+                      const takeCount = Math.min(remainingCount, item.count, 64);
+                      await yPlus2Chest.withdraw(item.type, null, takeCount);
+                      console.log(`从y+2容器成功拿取 ${takeCount} 个 ${blockName}`);
+                      remainingCount -= takeCount;
+                    }
+                    yPlus2Chest.close();
+                    if (remainingCount <= 0) continue;
+                  } else {
+                    console.log(`y+2容器中没有找到 ${blockName}`);
+                    yPlus2Chest.close();
+                  }
+                } catch (err) {
+                  console.log(`打开y+2容器失败: ${err.message}`);
+                }
+              } else {
+                console.log(`y+2坐标(${yPlus2Pos.x},${yPlus2Pos.y},${yPlus2Pos.z})不存在有效容器`);
+              }
             }
           }
           
-          // 如果不是地毯材料或y+1容器也没有足够材料，跳过
+          // 如果不是地毯材料或y+2容器也没有足够材料，跳过
           continue;
         }
 
@@ -829,6 +897,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                 const botPos = bot.entity.position;
                 const pos = new Vec3(x, y, z);
                 const block = schematic.getBlock(pos);
+                let wait = false;
 
                 if (block && block.name !== 'air') {
                   // 计算实际世界坐标
@@ -838,12 +907,15 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                     startPos.z + z
                   );
 
+                  // 检测shi'f跨区域移动
+                  if ((worldPos.x - botPos.x > 30) || (worldPos.z - botPos.z > 30)) {
+                    wait = true;
+                  }
                   // 移动到方块位置
                   bot.entity.position.x = worldPos.x + 0.5;
                   // 跨区域移动时需要等待
-                  console.error(`${worldPos}\n${botPos}`);
-                  if ((worldPos.x - botPos.x > 32) || (worldPos.z - botPos.z > 32)) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                  if (wait == true){
+                    await new Promise(resolve => setTimeout(resolve, 200));
                     console.log('跨区域移动，x轴已移动，等待100ms移动');
                   }
                   bot.entity.position.z = worldPos.z + 0.5;
@@ -972,7 +1044,7 @@ async function main() {
   try {
     console.log('开始执行主函数...');
     // 加载投影文件
-    const schematicData = await loadSchematic('./litematic/19.schem');
+    const schematicData = await loadSchematic('./litematic/20.schem');
 
     // 输出方块信息到txt文件（按区域划分）
     await outputBlockInfoByRegion(schematicData, './block_info_output.txt');
