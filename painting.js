@@ -70,7 +70,7 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 208, 13887);
+const buildStartPos = new Vec3(37439, 213, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -507,6 +507,114 @@ async function getMaterialsFromChests(materialCount) {
         if (items.length === 0) {
           console.log(`${chestInfo.type}中没有找到 ${blockName}`);
           chest.close();
+          
+          // 对于地毯材料，即使初始容器没找到，也尝试从y+1和y+2容器获取
+          if (blockName.includes('carpet') && !['smooth_stone', 'food'].includes(blockName)) {
+            console.log(`尝试从y+1坐标的容器获取${blockName}...`);
+            const yPlus1Pos = new Vec3(chestInfo.pos.x, chestInfo.pos.y + 1, chestInfo.pos.z);
+            const yPlus1ChestBlock = bot.blockAt(yPlus1Pos);
+            
+            let remainingCount = count; // 初始需要的数量
+            
+            if (yPlus1ChestBlock && ['chest', 'barrel'].includes(yPlus1ChestBlock.name)) {
+              try {
+                const yPlus1Chest = await bot.openContainer(yPlus1ChestBlock);
+                const yPlus1Items = yPlus1Chest.containerItems().filter(item => item.name === blockName);
+                const yPlus1Total = yPlus1Items.reduce((sum, item) => sum + item.count, 0);
+                
+                if (yPlus1Total > 0) {
+                  while (remainingCount > 0) {
+                    const item = yPlus1Chest.containerItems().find(i => i.name === blockName && i.count > 0);
+                    if (!item) break;
+                    
+                    const takeCount = Math.min(remainingCount, item.count, 64);
+                    await yPlus1Chest.withdraw(item.type, null, takeCount);
+                    console.log(`从y+1容器成功拿取 ${takeCount} 个 ${blockName}`);
+                    remainingCount -= takeCount;
+                  }
+                  yPlus1Chest.close();
+                  if (remainingCount <= 0) continue; // 成功获取足够材料
+                } else {
+                  console.log(`y+1容器中没有找到 ${blockName}`);
+                  yPlus1Chest.close();
+                  
+                  // 尝试从y+2坐标的容器获取
+                  console.log(`尝试从y+2坐标的容器获取${blockName}...`);
+                  const yPlus2Pos = new Vec3(chestInfo.pos.x, chestInfo.pos.y + 2, chestInfo.pos.z);
+                  const yPlus2ChestBlock = bot.blockAt(yPlus2Pos);
+                  
+                  if (yPlus2ChestBlock && ['chest', 'barrel'].includes(yPlus2ChestBlock.name)) {
+                    try {
+                      const yPlus2Chest = await bot.openContainer(yPlus2ChestBlock);
+                      const yPlus2Items = yPlus2Chest.containerItems().filter(item => item.name === blockName);
+                      const yPlus2Total = yPlus2Items.reduce((sum, item) => sum + item.count, 0);
+                      
+                      if (yPlus2Total > 0) {
+                        while (remainingCount > 0) {
+                          const item = yPlus2Chest.containerItems().find(i => i.name === blockName && i.count > 0);
+                          if (!item) break;
+                          
+                          const takeCount = Math.min(remainingCount, item.count, 64);
+                          await yPlus2Chest.withdraw(item.type, null, takeCount);
+                          console.log(`从y+2容器成功拿取 ${takeCount} 个 ${blockName}`);
+                          remainingCount -= takeCount;
+                        }
+                        yPlus2Chest.close();
+                        if (remainingCount <= 0) continue;
+                      } else {
+                        console.log(`y+2容器中没有找到 ${blockName}`);
+                        yPlus2Chest.close();
+                      }
+                    } catch (err) {
+                      console.log(`打开y+2容器失败: ${err.message}`);
+                    }
+                  } else {
+                    console.log(`y+2坐标(${yPlus2Pos.x},${yPlus2Pos.y},${yPlus2Pos.z})不存在有效容器`);
+                  }
+                }
+              } catch (err) {
+                console.log(`打开y+1容器失败: ${err.message}`);
+              }
+            } else {
+              console.log(`y+1坐标(${yPlus1Pos.x},${yPlus1Pos.y},${yPlus1Pos.z})不存在有效容器`);
+              
+              // 尝试从y+2坐标的容器获取
+              console.log(`尝试从y+2坐标的容器获取${blockName}...`);
+              const yPlus2Pos = new Vec3(chestInfo.pos.x, chestInfo.pos.y + 2, chestInfo.pos.z);
+              const yPlus2ChestBlock = bot.blockAt(yPlus2Pos);
+              
+              if (yPlus2ChestBlock && ['chest', 'barrel'].includes(yPlus2ChestBlock.name)) {
+                try {
+                  const yPlus2Chest = await bot.openContainer(yPlus2ChestBlock);
+                  const yPlus2Items = yPlus2Chest.containerItems().filter(item => item.name === blockName);
+                  const yPlus2Total = yPlus2Items.reduce((sum, item) => sum + item.count, 0);
+                  
+                  if (yPlus2Total > 0) {
+                    while (remainingCount > 0) {
+                      const item = yPlus2Chest.containerItems().find(i => i.name === blockName && i.count > 0);
+                      if (!item) break;
+                      
+                      const takeCount = Math.min(remainingCount, item.count, 64);
+                      await yPlus2Chest.withdraw(item.type, null, takeCount);
+                      console.log(`从y+2容器成功拿取 ${takeCount} 个 ${blockName}`);
+                      remainingCount -= takeCount;
+                    }
+                    yPlus2Chest.close();
+                    if (remainingCount <= 0) continue;
+                  } else {
+                    console.log(`y+2容器中没有找到 ${blockName}`);
+                    yPlus2Chest.close();
+                  }
+                } catch (err) {
+                  console.log(`打开y+2容器失败: ${err.message}`);
+                }
+              } else {
+                console.log(`y+2坐标(${yPlus2Pos.x},${yPlus2Pos.y},${yPlus2Pos.z})不存在有效容器`);
+              }
+            }
+          }
+          
+          // 对于非地毯材料或上层容器也没有找到，跳过
           continue;
         }
 
@@ -754,7 +862,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
           );
 
           // 移动到方块位置
-          bot.entity.position.x = worldPos.x + 0.5;
+          bot.entity.position.x = (worldPos.x - 1) + 0.5;
           bot.entity.position.y = worldPos.y + 1;
           bot.entity.position.z = worldPos.z + 0.5;
       
@@ -1044,7 +1152,7 @@ async function main() {
   try {
     console.log('开始执行主函数...');
     // 加载投影文件
-    const schematicData = await loadSchematic('./litematic/20.schem');
+    const schematicData = await loadSchematic('./litematic/frang3_3.schem');
 
     // 输出方块信息到txt文件（按区域划分）
     await outputBlockInfoByRegion(schematicData, './block_info_output.txt');
