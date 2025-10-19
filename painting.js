@@ -6,7 +6,69 @@ const notifier = require('node-notifier');
 const { pathfinder, Movements, goals: { GoalNear } } = require('mineflayer-pathfinder');
 const inventoryViewer = require('mineflayer-web-inventory');
 
+// 全局变量用于进度条
+let totalBlocks = 0;
+let completedBlocks = 0;
+let startTime = null;
+let currentRegion = '[0,0]';
+let currentBlockInfo = 'X: 0, Y: 0, Z: 0, 方块: none';
+let progressBarDisplayed = false;
+let lastProgress = -1;
+
 let bot;
+
+// 渲染进度条函数 - 固定显示在终端底部
+function renderProgressBar() {
+  if (!startTime || totalBlocks === 0) return;
+  
+  const progress = (completedBlocks / totalBlocks) * 100;
+  
+  // 获取终端尺寸
+  const columns = process.stdout.columns || 120;
+  const rows = process.stdout.rows || 30;
+  
+  // 计算已消耗时间
+  const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+  const elapsedMinutes = Math.floor(elapsedTime / 60);
+  const elapsedSeconds = Math.floor(elapsedTime % 60);
+  const elapsedTimeStr = `${elapsedMinutes}m ${elapsedSeconds}s`;
+  
+  // 计算预估剩余时间
+  let remainingTimeStr = '估算中...';
+  if (completedBlocks > 0 && progress < 100) {
+    const estimatedTotalTime = elapsedTime / (completedBlocks / totalBlocks);
+    const remainingTime = estimatedTotalTime - elapsedTime;
+    const remainingMinutes = Math.floor(remainingTime / 60);
+    const remainingSeconds = Math.floor(remainingTime % 60);
+    remainingTimeStr = `${remainingMinutes}m ${remainingSeconds}s`;
+  }
+  
+  // 创建进度条
+  const barLength = columns - 40; // 留出足够空间显示百分比
+  const completedLength = Math.round((progress / 100) * barLength);
+  const progressBar = '█'.repeat(completedLength) + '░'.repeat(barLength - completedLength);
+  
+  // 使用ANSI转义序列将光标移动到底部并保存位置
+  process.stdout.write(`\x1b[${rows - 5};1H\x1b[s`); // 移动到倒数第5行并保存位置
+  
+  // 清除进度条区域
+  for (let i = 0; i < 5; i++) {
+    process.stdout.write(`\x1b[${rows - 5 + i};1H\x1b[2K`);
+  }
+  
+  // 移动回起始位置
+  process.stdout.write('\x1b[u');
+  
+  // 输出进度信息 - 固定在底部
+  console.log(' '.repeat(columns).replace(/./g, '='));
+  console.log(`[${progressBar}] ${progress.toFixed(1)}%`);
+  console.log(`方块进度: ${completedBlocks}/${totalBlocks} | 已用时间: ${elapsedTimeStr} | 剩余时间: ${remainingTimeStr}`);
+  console.log(`当前区域: ${currentRegion} | 当前方块: ${currentBlockInfo}`);
+  console.log(' '.repeat(columns).replace(/./g, '='));
+  
+  // 恢复光标到之前的位置（进度条上方）
+  process.stdout.write(`\x1b[${rows - 6};1H`);
+}
 
 function createBot () {
   // Bot 配置
@@ -70,7 +132,7 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 231, 13887);
+const buildStartPos = new Vec3(37439, 232, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -141,9 +203,9 @@ async function outputBlockInfoByRegion(schematicData, outputPath) {
   const regionsX = Math.ceil(width / regionSize);
   const regionsZ = Math.ceil(length / regionSize);
 
-  // 先处理前128个方块
+  // 先处理光边
   let initialBlockCount = 0;
-  blockInfo += '=== 前128个方块 ===\n';
+  blockInfo += '=== 光边 ===\n';
 
   outerLoop: for (let y = 0; y < height; y++) {
     for (let z = 0; z < length; z++) {
@@ -163,7 +225,7 @@ async function outputBlockInfoByRegion(schematicData, outputPath) {
     }
   }
 
-  blockInfo += `\n前128个方块处理完成，实际处理了 ${initialBlockCount} 个非空气方块\n\n`;
+  blockInfo += `\n光边处理完成，实际处理了 ${initialBlockCount} 个非空气方块\n\n`;
 
   // 处理剩余的128x128区域，分为16个32x32的子区域
   blockInfo += '=== 16个32x32子区域信息 ===\n';
@@ -807,11 +869,11 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
   // 检查并获取食物
   await checkAndFetchFood();
 
-  // 先建造前128个方块
-  console.log('开始建造前128个方块...');
+  // 先建造光边
+  console.log('开始建造光边...');
   let initialBlockCount = 0;
 
-  // 计算前128个方块所需的材料数量
+  // 计算光边所需的材料数量
   const initialMaterialCount = {};
 
   outerLoopMaterial: for (let y = 0; y < height; y++) {
@@ -837,7 +899,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
     }
   }
 
-  // 从容器(木桶/箱子)中获取前128个方块所需的全部材料
+  // 从容器(木桶/箱子)中获取光边所需的全部材料
   await getMaterialsFromChests(initialMaterialCount);
 
   // 重置计数器
@@ -860,6 +922,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
             startPos.y + y,
             startPos.z + z
           );
+          // 更新区域和方块信息
+          currentRegion = `[光边]`;
+          currentBlockInfo = `X: ${worldPos.x}, Y: ${worldPos.y}, Z: ${worldPos.z}, 方块: ${block.name}`;
 
           // 移动到方块位置
           bot.entity.position.x = (worldPos.x - 1) + 0.5;
@@ -870,8 +935,10 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
         const existingBlock = bot.blockAt(worldPos);
         if (existingBlock && existingBlock.name !== 'air') {
           console.log(`目标位置已存在方块: ${existingBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})，跳过放置`);
-          initialBlockCount++; // 即使跳过放置也要增加计数器
-          continue; // 跳过当前方块的放置操作
+          initialBlockCount++;
+          completedBlocks++;
+          renderProgressBar();
+          continue;
         }
       
         // 使用正常的放置方块方式
@@ -897,6 +964,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                 await bot.equip(blockItem, 'hand');
                 // 放置方块，使用(0, 1, 0)作为方向向量表示在参考方块上方放置
                 await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+                initialBlockCount++;
+                completedBlocks++;
+                renderProgressBar();
                 // 添加10ms延迟
                 await new Promise(resolve => setTimeout(resolve, 10));
               } else {
@@ -921,6 +991,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   let retryPlacedBlock = bot.blockAt(worldPos);
                   if (retryPlacedBlock && retryPlacedBlock.name !== 'air') {
                     console.log(`方块放置成功: ${retryPlacedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                    initialBlockCount++;
+                    completedBlocks++;
+                    renderProgressBar();
                     break;
                   }
                 } catch (retryErr) {
@@ -939,10 +1012,10 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
     }
   }
 
-  console.log(`前128个方块建造完成，实际建造了 ${initialBlockCount} 个方块`);
+  console.log(`光边建造完成，实际建造了 ${initialBlockCount} 个方块`);
 
-  // 等待一段时间确保前128个方块建造完成
-  console.log('等待5秒以确保前128个方块建造完成...');
+  // 等待一段时间确保光边建造完成
+  console.log('等待5秒以确保光边建造完成...');
   await new Promise(resolve => setTimeout(resolve, 5000));
 
   // 定义区域大小
@@ -1010,6 +1083,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                     startPos.y + y,
                     startPos.z + z
                   );
+                  // 更新区域和方块信息
+                  currentRegion = `[${rx},${rz}]`;
+                  currentBlockInfo = `X: ${worldPos.x}, Y: ${worldPos.y}, Z: ${worldPos.z}, 方块: ${block.name}`;
                   // 检测是否跨区域移动
                   if ((worldPos.x - botPos.x > 30) || (worldPos.z - botPos.z > 30)) {
                     wait = true;
@@ -1032,8 +1108,10 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   const existingBlock = bot.blockAt(worldPos);
                   if (existingBlock && existingBlock.name !== 'air') {
                     console.log(`目标位置已存在方块: ${existingBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})，跳过放置`);
-                    initialBlockCount++; // 即使跳过放置也要增加计数器
-                    continue; // 跳过当前方块的放置操作
+                    initialBlockCount++;
+                    completedBlocks++;
+                    renderProgressBar();
+                    continue;
                   }
 
                   // 使用正常的放置方块方式
@@ -1062,6 +1140,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                         let placedBlock = bot.blockAt(worldPos);
                         if (placedBlock && placedBlock.name !== 'air') {
                           console.log(`方块放置成功: ${placedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                          completedBlocks++;
+                          renderProgressBar();
                         }
                       } else {
                         console.log(`背包中没有找到方块: ${block.name}`);
@@ -1085,6 +1165,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                           let retryPlacedBlock = bot.blockAt(worldPos);
                           if (retryPlacedBlock && retryPlacedBlock.name !== 'air') {
                             console.log(`方块放置成功: ${retryPlacedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
+                            completedBlocks++;
+                            renderProgressBar();
                             break;
                           }
                         } catch (retryErr) {
@@ -1193,8 +1275,6 @@ async function checkRegionForMissingBlocks(schematic, startPos, startX, endX, st
             startPos.z + z
           );
           
-          console.log(`检查方块: ${schematicBlock.name} at (${x}, ${y}, ${z}) -> (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
-
           // 检查实际世界中该位置是否有方块
           const worldBlock = bot.blockAt(worldPos);
           
@@ -1249,6 +1329,8 @@ async function fillMissingBlocks(missingBlocks, schematic, startPos) {
               if (placedBlock && placedBlock.name !== 'air') {
                 console.log(`方块补全成功: ${placedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
                 placedSuccessfully = true;
+                completedBlocks++;
+                renderProgressBar();
               }
               await new Promise(resolve => setTimeout(resolve, 100));
             } catch (err) {
@@ -1277,7 +1359,26 @@ async function main() {
   try {
     console.log('开始执行主函数...');
     // 加载投影文件
-    const schematicData = await loadSchematic('./litematic/22.schem');
+    const schematicData = await loadSchematic('./litematic/23.schem');
+    const { schematic, width, height, length } = schematicData;
+    
+    // 计算总方块数并初始化进度条
+    let blockCount = 0;
+    for (let y = 0; y < height; y++) {
+      for (let z = 0; z < length; z++) {
+        for (let x = 0; x < width; x++) {
+          const block = schematic.getBlock(new Vec3(x, y, z));
+          if (block && block.name !== 'air') {
+            blockCount++;
+          }
+        }
+      }
+    }
+    totalBlocks = blockCount;
+    completedBlocks = 0;
+    startTime = Date.now();
+    progressBarDisplayed = false;
+    lastProgress = -1;
 
     // 输出方块信息到txt文件（按区域划分）
     await outputBlockInfoByRegion(schematicData, './block_info_output.txt');
@@ -1290,7 +1391,7 @@ async function main() {
     await buildWithSetblockByRegion(schematicData, buildStartPos);
 
     // 建造完成
-    console.log('建造完成');
+    console.log('\n建造完成');
     notifier.notify({
       appID: 'PaintingBot',
       icon: './success.png',
