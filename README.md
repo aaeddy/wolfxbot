@@ -1,4 +1,3 @@
-AEddy是南梁AEddy是南梁AEddy是南梁AEddy是南梁AEddy是南梁AEddy是南梁AEddy是南梁AEddy是南梁
 # 本 README 文件仅为 painting.js 的说明文档
 
 # Painting Bot
