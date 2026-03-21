@@ -17,7 +17,7 @@ let lastProgress = -1;
 
 let bot;
 
-// 渲染进度条函数 - 固定显示在终端底部，与日志分离
+// 渲染进度条函数 - 固定显示在终端底部
 function renderProgressBar() {
   if (!startTime || totalBlocks === 0) return;
   
@@ -48,36 +48,26 @@ function renderProgressBar() {
   const completedLength = Math.round((progress / 100) * barLength);
   const progressBar = '█'.repeat(completedLength) + '░'.repeat(barLength - completedLength);
   
-  // 使用更可靠的终端控制方式
-  // 1. 保存当前光标位置
-  process.stdout.write('\x1b[s');
+  // 使用ANSI转义序列将光标移动到底部并保存位置
+  process.stdout.write(`\x1b[${rows - 5};1H\x1b[s`); // 移动到倒数第5行并保存位置
   
-  // 2. 隐藏光标
-  process.stdout.write('\x1b[?25l');
-  
-  // 3. 移动到屏幕底部的进度条区域
-  process.stdout.write(`\x1b[${rows - 5};1H`);
-  
-  // 4. 清除进度条区域的5行
+  // 清除进度条区域
   for (let i = 0; i < 5; i++) {
     process.stdout.write(`\x1b[${rows - 5 + i};1H\x1b[2K`);
   }
   
-  // 5. 重新定位到进度条起始位置
-  process.stdout.write(`\x1b[${rows - 5};1H`);
-  
-  // 6. 输出进度信息
-  process.stdout.write('='.repeat(columns) + '\n');
-  process.stdout.write(`[${progressBar}] ${progress.toFixed(1)}%\n`);
-  process.stdout.write(`方块进度: ${completedBlocks}/${totalBlocks} | 已用时间: ${elapsedTimeStr} | 剩余时间: ${remainingTimeStr}\n`);
-  process.stdout.write(`当前区域: ${currentRegion} | 当前方块: ${currentBlockInfo}\n`);
-  process.stdout.write('='.repeat(columns) + '\n');
-  
-  // 7. 恢复光标位置
+  // 移动回起始位置
   process.stdout.write('\x1b[u');
   
-  // 8. 显示光标
-  process.stdout.write('\x1b[?25h');
+  // 输出进度信息 - 固定在底部
+  console.log(' '.repeat(columns).replace(/./g, '='));
+  console.log(`[${progressBar}] ${progress.toFixed(1)}%`);
+  console.log(`方块进度: ${completedBlocks}/${totalBlocks} | 已用时间: ${elapsedTimeStr} | 剩余时间: ${remainingTimeStr}`);
+  console.log(`当前区域: ${currentRegion} | 当前方块: ${currentBlockInfo}`);
+  console.log(' '.repeat(columns).replace(/./g, '='));
+  
+  // 恢复光标到之前的位置（进度条上方）
+  process.stdout.write(`\x1b[${rows - 6};1H`);
 }
 
 function createBot () {
@@ -142,7 +132,7 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 238, 13887);
+const buildStartPos = new Vec3(37439, 232, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -1369,7 +1359,7 @@ async function main() {
   try {
     console.log('开始执行主函数...');
     // 加载投影文件
-    const schematicData = await loadSchematic('./litematic/mwla.schem');
+    const schematicData = await loadSchematic('./litematic/23.schem');
     const { schematic, width, height, length } = schematicData;
     
     // 计算总方块数并初始化进度条

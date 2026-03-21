@@ -1,21 +1,9 @@
-const mineflayer = require('mineflayer')
+const notifier = require('node-notifier');
 
-const bot = mineflayer.createBot({
-  host: 'bangdream.lazyalienserver.top',
-  port: 25565,
-  username: 'Mutsumi',
-  version: '1.21.7',
-  auth: 'offline'
-})
-
-bot.on('message', (message) => {
-  console.log(message.toAnsi())
-})
-
-bot.on('spawn', async () => {
-  bot.chat('/server survival')
-  await new Promise(resolve => setTimeout(resolve, 5000));
-  bot.setControlState('sneak', true)
-  await new Promise(resolve => setTimeout(resolve, 100));
-  bot.setControlState('sneak', false)
-})
+notifier.notify({
+  appID: 'PaintingBot',
+  icon: './success.png',
+  title: '建造完成',
+  message: '嘻嘻嘻嘻嘻嘻',
+  sound: true,
+});
