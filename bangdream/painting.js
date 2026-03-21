@@ -17,6 +17,38 @@ let lastProgress = -1;
 
 let bot;
 
+// 辅助函数：安全移动bot位置（每次最多移动1格）
+async function moveBotPositionSafely(targetX, targetY, targetZ) {
+  const currentX = bot.entity.position.x;
+  const currentY = bot.entity.position.y;
+  const currentZ = bot.entity.position.z;
+
+  const deltaX = targetX - currentX;
+  const deltaY = targetY - currentY;
+  const deltaZ = targetZ - currentZ;
+
+  const steps = Math.max(
+    Math.ceil(Math.abs(deltaX)),
+    Math.ceil(Math.abs(deltaY)),
+    Math.ceil(Math.abs(deltaZ))
+  );
+
+  if (steps <= 1) {
+    bot.entity.position.x = targetX;
+    bot.entity.position.y = targetY;
+    bot.entity.position.z = targetZ;
+    return;
+  }
+
+  for (let i = 1; i <= steps; i++) {
+    const progress = i / steps;
+    bot.entity.position.x = currentX + deltaX * progress;
+    bot.entity.position.y = currentY + deltaY * progress;
+    bot.entity.position.z = currentZ + deltaZ * progress;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+
 // 渲染进度条函数 - 固定显示在终端底部，与日志分离
 function renderProgressBar() {
   if (!startTime || totalBlocks === 0) return;
@@ -83,11 +115,11 @@ function renderProgressBar() {
 function createBot () {
   // Bot 配置
   bot = mineflayer.createBot({
-    host: 'wolfx.jp',
+    host: 'bangdream.lazyalienserver.top',
     port: 25565,
-    username: 'paintingbot',
-    version: '1.20.4',
-    auth: 'microsoft'
+    username: 'Mutsumi',
+    version: '1.21.7',
+    auth: 'offline'
   });
 
   // 加载pathfinder插件
@@ -142,28 +174,28 @@ function createBot () {
 }
 
 // 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 238, 13887);
+const buildStartPos = new Vec3(4927, 28, 4927);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
-  { color: 'smooth_stone', pos: new Vec3(37520, 90, 13881), type: 'chest' },
-  { color: 'white_carpet', pos: new Vec3(37541, 90, 13880), type: 'barrel' },
-  { color: 'purple_carpet', pos: new Vec3(37540, 90, 13880), type: 'barrel' },
-  { color: 'orange_carpet', pos: new Vec3(37539, 90, 13880), type: 'barrel' },
-  { color: 'magenta_carpet', pos: new Vec3(37538, 90, 13880), type: 'barrel' },
-  { color: 'light_gray_carpet', pos: new Vec3(37537, 90, 13880), type: 'barrel' },
-  { color: 'cyan_carpet', pos: new Vec3(37536, 90, 13880), type: 'barrel' },
-  { color: 'light_blue_carpet', pos: new Vec3(37535, 90, 13880), type: 'barrel' },
-  { color: 'lime_carpet', pos: new Vec3(37534, 90, 13880), type: 'barrel' },
-  { color: 'green_carpet', pos: new Vec3(37533, 90, 13880), type: 'barrel' },
-  { color: 'red_carpet', pos: new Vec3(37532, 90, 13880), type: 'barrel' },
-  { color: 'yellow_carpet', pos: new Vec3(37531, 90, 13880), type: 'barrel' },
-  { color: 'brown_carpet', pos: new Vec3(37530, 90, 13880), type: 'barrel' },
-  { color: 'blue_carpet', pos: new Vec3(37529, 90, 13880), type: 'barrel' },
-  { color: 'pink_carpet', pos: new Vec3(37528, 90, 13880), type: 'barrel' },
-  { color: 'black_carpet', pos: new Vec3(37527, 90, 13880), type: 'barrel' },
-  { color: 'gray_carpet', pos: new Vec3(37526, 90, 13880), type: 'barrel' },
-  { color: 'food', pos: new Vec3(37518, 90, 13881), type: 'chest', food: true }
+  { color: 'smooth_stone', pos: new Vec3(5027, 17, 4921), type: 'chest' },
+  { color: 'white_carpet', pos: new Vec3(5044, 17, 4920), type: 'barrel' },
+  { color: 'purple_carpet', pos: new Vec3(5043, 17, 4920), type: 'barrel' },
+  { color: 'orange_carpet', pos: new Vec3(5042, 17, 4920), type: 'barrel' },
+  { color: 'magenta_carpet', pos: new Vec3(5041, 17, 4920), type: 'barrel' },
+  { color: 'light_gray_carpet', pos: new Vec3(5040, 17, 4920), type: 'barrel' },
+  { color: 'cyan_carpet', pos: new Vec3(5039, 17, 4920), type: 'barrel' },
+  { color: 'light_blue_carpet', pos: new Vec3(5038, 17, 4920), type: 'barrel' },
+  { color: 'lime_carpet', pos: new Vec3(5037, 17, 4920), type: 'barrel' },
+  { color: 'green_carpet', pos: new Vec3(5036, 17, 4920), type: 'barrel' },
+  { color: 'red_carpet', pos: new Vec3(5035, 17, 4920), type: 'barrel' },
+  { color: 'yellow_carpet', pos: new Vec3(5034, 17, 4920), type: 'barrel' },
+  { color: 'brown_carpet', pos: new Vec3(5033, 17, 4920), type: 'barrel' },
+  { color: 'blue_carpet', pos: new Vec3(5032, 17, 4920), type: 'barrel' },
+  { color: 'pink_carpet', pos: new Vec3(5031, 17, 4920), type: 'barrel' },
+  { color: 'black_carpet', pos: new Vec3(5030, 17, 4920), type: 'barrel' },
+  { color: 'gray_carpet', pos: new Vec3(5029, 17, 4920), type: 'barrel' },
+  { color: 'food', pos: new Vec3(5027, 18, 4921), type: 'chest', food: true }
 ];
 
 // 加载投影文件
@@ -361,7 +393,7 @@ async function checkAndFetchFood() {
   }
 
   // 打开食物容器并获取食物
-  console.log(`从食物 ${foodChestInfo.type}中获取 cooked_cod`);
+  console.log(`从食物 ${foodChestInfo.type}中获取 golden_carrot`);
 
   // 查找容器方块
   const chestBlock = bot.blockAt(foodChestInfo.pos);
@@ -375,9 +407,9 @@ async function checkAndFetchFood() {
     const chest = await bot.openContainer(chestBlock);
 
     // 查找食物
-    const items = chest.containerItems().filter(item => item.name === 'cooked_cod');
+    const items = chest.containerItems().filter(item => item.name === 'golden_carrot');
     if (items.length === 0) {
-      console.log(`${foodChestInfo.type}中没有找到 cooked_cod`);
+      console.log(`${foodChestInfo.type}中没有找到 golden_carrot`);
       chest.close();
       return;
     }
@@ -386,7 +418,7 @@ async function checkAndFetchFood() {
     const totalCount = items.reduce((sum, item) => sum + item.count, 0);
 
     // 计算背包中已有的食物数量
-    const inventoryItems = bot.inventory.items().filter(item => item.name === 'cooked_cod');
+    const inventoryItems = bot.inventory.items().filter(item => item.name === 'golden_carrot');
     const inventoryCount = inventoryItems.reduce((sum, item) => sum + item.count, 0);
 
     // 计算需要拿取或丢弃的食物数量，保持总数为64
@@ -400,9 +432,9 @@ async function checkAndFetchFood() {
       let remainingCount = availableCount;
       while (remainingCount > 0) {
         // 查找还有食物的槽位
-        const item = chest.containerItems().find(item => item.name === 'cooked_cod' && item.count > 0);
+        const item = chest.containerItems().find(item => item.name === 'golden_carrot' && item.count > 0);
         if (!item) {
-          console.log(`无法找到足够的 cooked_cod，剩余需要 ${remainingCount} 个`);
+          console.log(`无法找到足够的 golden_carrot，剩余需要 ${remainingCount} 个`);
           break;
         }
 
@@ -411,7 +443,7 @@ async function checkAndFetchFood() {
 
         // 从容器中拿取食物
         await chest.withdraw(item.type, null, takeCount);
-        console.log(`成功从食物${foodChestInfo.type}中拿取 ${takeCount} 个 cooked_cod`);
+        console.log(`成功从食物${foodChestInfo.type}中拿取 ${takeCount} 个 golden_carrot`);
 
         // 更新剩余需要拿取的数量
         remainingCount -= takeCount;
@@ -419,7 +451,7 @@ async function checkAndFetchFood() {
     } else if (inventoryCount > targetTotalCount) {
       // 需要丢弃多余的食物
       const excessCount = inventoryCount - targetTotalCount;
-      console.log(`背包中食物过多，需要丢弃 ${excessCount} 个 cooked_cod`);
+      console.log(`背包中食物过多，需要丢弃 ${excessCount} 个 golden_carrot`);
       
       let remainingCount = excessCount;
       for (const item of inventoryItems) {
@@ -427,7 +459,7 @@ async function checkAndFetchFood() {
         
         const discardCount = Math.min(remainingCount, item.count);
         await bot.toss(item.type, null, discardCount);
-        console.log(`已丢弃 ${discardCount} 个 cooked_cod`);
+        console.log(`已丢弃 ${discardCount} 个 golden_carrot`);
         remainingCount -= discardCount;
       }
     }
@@ -448,7 +480,7 @@ async function autoEat() {
 
   while (bot.food < 20) {
     // 查找背包中的食物
-    const foodItem = bot.inventory.items().find(item => item.name === 'cooked_cod');
+    const foodItem = bot.inventory.items().find(item => item.name === 'golden_carrot');
     if (!foodItem) {
       console.log('背包中没有食物');
       break;
@@ -493,10 +525,10 @@ async function monitorHunger() {
 async function getMaterialsFromChests(materialCount) {
   console.log('正在从容器(木桶/箱子)中获取建造所需材料...');
 
-  // 传送到hpdth位置
+  // 传送到地毯机位置
   await new Promise(resolve => setTimeout(resolve, 3000));
-  console.log('传送到hpdth位置...');
-  let tpCommand1 = `/res tp hpdth`;
+  console.log('传送到地毯机位置...');
+  let tpCommand1 = `/tp dth_fake`;
   console.log(`执行命令: ${tpCommand1}`);
   bot.chat(tpCommand1);
 
@@ -846,7 +878,7 @@ async function getMaterialsFromChests(materialCount) {
   // 传送到搭建平台
   await new Promise(resolve => setTimeout(resolve, 3000));
   console.log('传送到搭建平台...');
-  let tpCommand2 = `/res tp hpdth.dth`;
+  let tpCommand2 = `/tp ${buildStartPos.x + 1} ${buildStartPos.y + 0.0625} ${buildStartPos.z + 1}`;
   console.log(`执行命令: ${tpCommand2}`);
   bot.chat(tpCommand2);
 
@@ -865,10 +897,10 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
 
   const { schematic, width, height, length } = schematicData;
 
-  // 传送到搭建平台
+  // 传送到地毯机位置
   await new Promise(resolve => setTimeout(resolve, 3000));
-  console.log('传送到hpdth位置...');
-  let tpCommand = `/res tp hpdth`;
+  console.log('传送到地毯机位置...');
+  let tpCommand = `/tp dth_fake`;
   console.log(`执行命令: ${tpCommand}`);
   bot.chat(tpCommand);
 
@@ -937,9 +969,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
           currentBlockInfo = `X: ${worldPos.x}, Y: ${worldPos.y}, Z: ${worldPos.z}, 方块: ${block.name}`;
 
           // 移动到方块位置
-          bot.entity.position.x = (worldPos.x - 1) + 0.5;
-          bot.entity.position.y = worldPos.y + 1;
-          bot.entity.position.z = worldPos.z + 0.5;
+          // bot.chat(`/tp ${(worldPos.x - 1) + 0.5} ${worldPos.y + 1} ${worldPos.z + 0.5}`);
+          await moveBotPositionSafely((worldPos.x - 1) + 0.5, worldPos.y + 1, worldPos.z + 0.5);
       
         // 检查目标位置是否已存在方块
         const existingBlock = bot.blockAt(worldPos);
@@ -961,6 +992,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
           if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y && Math.floor(botPos.z) === worldPos.z) {
             console.log('Bot站在要放置方块的位置上，需要执行 vclip 动作');
             // .vclip 1
+            // bot.chat(`/tp ~ ${bot.entity.position.y + 1} ~`);
             bot.entity.position.y += 1;
             // 在悬空状态下放置其脚下方块
             console.log('在悬空状态下放置方块');
@@ -1101,12 +1133,14 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                     wait = true;
                   }
                   // 移动到方块位置
-                  bot.entity.position.x = worldPos.x + 0.5;
+                  // bot.chat(`/tp ${worldPos.x + 0.5} ~ ~`);
+                  await moveBotPositionSafely(worldPos.x + 0.5, bot.entity.position.y, worldPos.z + 0.5);
                   // 跨区域移动时需要等待
                   if (wait == true){
                     await new Promise(resolve => setTimeout(resolve, 200));
                     console.log('跨区域移动，x轴已移动，等待100ms移动');
                   }
+                  // bot.chat(`/tp ~ ~ ${worldPos.z + 0.5}`);
                   bot.entity.position.z = worldPos.z + 0.5;
                   // 检查 z 是否变化
                   if (z !== lastZ) {
@@ -1133,6 +1167,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   if (Math.floor(botPos.x) === worldPos.x && Math.floor(botPos.y) === worldPos.y - 1 && Math.floor(botPos.z) === worldPos.z) {
                     console.log('Bot站在要放置方块的位置上，需要执行 vclip 操作');
                     // .vclip 1
+                    // bot.chat(`/tp ~ ${bot.entity.position.y + 1} ~`);
                     bot.entity.position.y += 1;
                     // 在悬空状态下放置其脚下方块
                     console.log('在悬空状态下放置方块');
@@ -1214,7 +1249,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
         
         // 传送到材料区域获取所需材料
         console.log('传送到材料区域获取所需材料...');
-        let tpCommandMaterials = `/res tp hpdth.dth`;
+        let tpCommandMaterials = `/tp ${buildStartPos.x + 1} ${buildStartPos.y + 0.0625} ${buildStartPos.z + 1}`;
         console.log(`执行命令: ${tpCommandMaterials}`);
         bot.chat(tpCommandMaterials);
         
@@ -1238,7 +1273,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
       }
       
       console.log('传送到搭建平台...');
-      let tpCommand3 = `/res tp hpdth.dth`;
+      let tpCommand3 = `/tp ${buildStartPos.x + 1} ${buildStartPos.y + 0.0625} ${buildStartPos.z + 1}`;
       console.log(`执行命令: ${tpCommand3}`);
       bot.chat(tpCommand3);
 
@@ -1250,8 +1285,8 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
       console.log('丢弃所有非食物物品...');
       const items = bot.inventory.items();
       for (const item of items) {
-        // 保留食物物品（cooked_cod）
-        if (item.name !== 'cooked_cod') {
+        // 保留食物物品（golden_carrot）
+        if (item.name !== 'golden_carrot') {
           try {
             await bot.toss(item.type, null, item.count);
             console.log(`已丢弃 ${item.count}x ${item.name}`);
@@ -1311,8 +1346,10 @@ async function fillMissingBlocks(missingBlocks, schematic, startPos) {
     console.log(`尝试补全方块: ${blockName} at (${x}, ${y}, ${z})`);
     
     // 移动到方块位置
+    // bot.chat(`/tp ${x + 0.5} ~ ~`);
     bot.entity.position.x = x + 0.5;
-    bot.entity.position.z = z + 0.5;
+    // bot.chat(`/tp ~ ~ ${z + 0.5}`);
+    await moveBotPositionSafely(x + 0.5, bot.entity.position.y, z + 0.5);
     
     // 获取要放置方块位置下方的方块作为参考方块
     const referenceBlock = bot.blockAt(worldPos.offset(0, -1, 0));
@@ -1369,7 +1406,7 @@ async function main() {
   try {
     console.log('开始执行主函数...');
     // 加载投影文件
-    const schematicData = await loadSchematic('./litematic/mwla.schem');
+    const schematicData = await loadSchematic('../litematic/wrintar.schem');
     const { schematic, width, height, length } = schematicData;
     
     // 计算总方块数并初始化进度条
