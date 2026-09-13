@@ -17,9 +17,49 @@ let lastProgress = -1;
 
 let bot;
 
+let progressHandler = null;
+let botConfig = {};
+let spawnCallback = null;
+
+// 设置进度回调（网页UI通过此接口接收实时进度）
+function setProgressHandler(fn) {
+  progressHandler = fn;
+}
+
+// 获取机器人实例
+function getBot() {
+  return bot;
+}
+
+// 获取当前进度状态
+function getProgressState() {
+  const progress = totalBlocks > 0 ? (completedBlocks / totalBlocks) * 100 : 0;
+  let remainingSeconds = null;
+  if (startTime && completedBlocks > 0 && progress < 100) {
+    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    const estimatedTotalSeconds = elapsedSeconds / (completedBlocks / totalBlocks);
+    remainingSeconds = Math.max(0, Math.round(estimatedTotalSeconds - elapsedSeconds));
+  }
+  return {
+    completedBlocks,
+    totalBlocks,
+    progress,
+    currentRegion,
+    currentBlockInfo,
+    elapsedSeconds: startTime ? Math.floor((Date.now() - startTime) / 1000) : 0,
+    remainingSeconds
+  };
+}
+
 // 渲染进度条函数 - 固定显示在终端底部
 function renderProgressBar() {
   if (!startTime || totalBlocks === 0) return;
+
+  // 网页模式：发送进度数据，跳过终端渲染
+  if (typeof progressHandler === 'function') {
+    progressHandler(getProgressState());
+    return;
+  }
   
   const progress = (completedBlocks / totalBlocks) * 100;
   
@@ -70,14 +110,22 @@ function renderProgressBar() {
   process.stdout.write(`\x1b[${rows - 6};1H`);
 }
 
-function createBot () {
+function createBot (config = {}, onSpawn = null) {
+  // 保存/合并连接配置
+  if (config && typeof config === 'object' && Object.keys(config).length > 0) {
+    botConfig = { ...botConfig, ...config };
+  }
+  if (onSpawn) {
+    spawnCallback = onSpawn;
+  }
+
   // Bot 配置
   bot = mineflayer.createBot({
-    host: 'wolfx.jp',
-    port: 25565,
-    username: 'paintingbot',
-    version: '1.20.4',
-    auth: 'microsoft'
+    host: botConfig.host || 'wolfx.jp',
+    port: botConfig.port || 25565,
+    username: botConfig.username || 'paintingbot',
+    version: botConfig.version || '1.20.4',
+    auth: botConfig.auth || 'microsoft'
   });
 
   // 加载pathfinder插件
@@ -93,12 +141,6 @@ function createBot () {
 
   bot.on('kicked', (reason) => {
     console.log('机器人被踢出服务器:', reason);
-  });
-
-  // 断线重连
-  bot.on('end', () => {
-    console.log('机器人断线，5秒后尝试重连...');
-    setTimeout(createBot, 5000);
   });
 
   // 机器人连接事件
@@ -121,8 +163,15 @@ function createBot () {
 
     // 启动实时监控饥饿值
     monitorHunger();
-    
-    main();
+
+    // 网页模式下由服务端指定建造流程；命令行模式下自动运行 main
+    const cb = spawnCallback;
+    spawnCallback = null;
+    if (cb) {
+      await cb();
+    } else if (require.main === module) {
+      await main();
+    }
   });
 
   // 添加更多调试信息
@@ -130,9 +179,6 @@ function createBot () {
     console.log(`${username}: ${message}`);
   });
 }
-
-// 建造平面起始坐标
-const buildStartPos = new Vec3(37439, 232, 13887);
 
 // 各颜色容器(木桶/箱子)的坐标信息
 const materialChests = [
@@ -156,11 +202,17 @@ const materialChests = [
   { color: 'food', pos: new Vec3(37518, 90, 13881), type: 'chest', food: true }
 ];
 
-// 加载投影文件
-async function loadSchematic(filePath) {
+// 加载投影文件（支持文件路径或 Buffer）
+async function loadSchematic(input) {
   try {
-    console.log(`尝试加载投影文件: ${filePath}`);
-    const data = await fs.readFile(filePath);
+    let data;
+    if (Buffer.isBuffer(input)) {
+      data = input;
+      console.log('使用上传的投影数据');
+    } else {
+      console.log(`尝试加载投影文件: ${input}`);
+      data = await fs.readFile(input);
+    }
     console.log(`文件大小: ${data.length} 字节`);
 
     // 读取.schem文件
@@ -855,7 +907,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
 
   const { schematic, width, height, length } = schematicData;
 
-  // 传送到搭建平台
+  // 传送到hpdth位置
   await new Promise(resolve => setTimeout(resolve, 3000));
   console.log('传送到hpdth位置...');
   let tpCommand = `/res tp hpdth`;
@@ -961,14 +1013,15 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
               // 确保手中有正确的方块
               const blockItem = bot.inventory.items().find(item => item.name === block.name);
               if (blockItem) {
-                await bot.equip(blockItem, 'hand');
+                if (!bot.heldItem || bot.heldItem.name !== block.name) {
+                  await bot.equip(blockItem, 'hand');
+                }
                 // 放置方块，使用(0, 1, 0)作为方向向量表示在参考方块上方放置
                 await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
-                initialBlockCount++;
                 completedBlocks++;
                 renderProgressBar();
-                // 添加10ms延迟
-                await new Promise(resolve => setTimeout(resolve, 10));
+                // 移除此前的 10ms 延迟
+                await new Promise(resolve => setTimeout(resolve, 0));
               } else {
                 console.log(`背包中没有找到方块: ${block.name}`);
               }
@@ -990,8 +1043,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                     await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
                   let retryPlacedBlock = bot.blockAt(worldPos);
                   if (retryPlacedBlock && retryPlacedBlock.name !== 'air') {
-                    console.log(`方块放置成功: ${retryPlacedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
-                    initialBlockCount++;
+                    console.log(`方块放置成功: ${retryPlacedBlock.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);                    initialBlockCount++;
                     completedBlocks++;
                     renderProgressBar();
                     break;
@@ -1063,12 +1115,15 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
         // 从容器(木桶/箱子)中获取区域所需的全部材料
         await getMaterialsFromChests(materialCount);
 
-        // 记录上一个z坐标
-        let lastZ = -1;
         // 遍历区域内的每个方块
         for (let y = 0; y < height; y++) {
           for (let z = startZ; z < endZ && z <= length - 1; z++) {  // 确保z不超过length-1
-            for (let x = startX; x < endX; x++) {
+            // 蛇形(之字形)遍历：偶数行从左到右，奇数行从右到左，避免每行结束折返
+            const forward = ((z - startZ) % 2 === 0);
+            const xStep = forward ? 1 : -1;
+            const xBegin = forward ? startX : endX - 1;
+            const xBound = forward ? endX : startX - 1;
+            for (let x = xBegin; x !== xBound; x += xStep) {
               // 确保不超出投影文件的实际范围
               if (z <= length - 1) {  // 确保z不超过length-1
                 const botPos = bot.entity.position;
@@ -1094,16 +1149,10 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                   bot.entity.position.x = worldPos.x + 0.5;
                   // 跨区域移动时需要等待
                   if (wait == true){
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                    console.log('跨区域移动，x轴已移动，等待100ms移动');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    console.log('跨区域移动，x轴已移动，等待500ms移动');
                   }
                   bot.entity.position.z = worldPos.z + 0.5;
-                  // 检查 z 是否变化
-                  if (z !== lastZ) {
-                    await new Promise(resolve => setTimeout(resolve, 50));
-                    lastZ = z; // 更新 lastZ
-                  }
-
                   // 检查目标位置是否已存在方块
                   const existingBlock = bot.blockAt(worldPos);
                   if (existingBlock && existingBlock.name !== 'air') {
@@ -1130,10 +1179,12 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
 
                   if (referenceBlock) {
                     try {
-                      // 确保手中有正确的方块
+                      // 确保手中有正确的方块；仅当手中不是该方块时才重新装备，避免每次放置都发起装备请求
                       const blockItem = bot.inventory.items().find(item => item.name === block.name);
                       if (blockItem) {
-                        await bot.equip(blockItem, 'hand');
+                        if (!bot.heldItem || bot.heldItem.name !== block.name) {
+                          await bot.equip(blockItem, 'hand');
+                        }
                         // 放置方块，使用(0, 1, 0)作为方向向量表示在参考方块上方放置
                         await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
                         // 检查方块是否放置成功，如果没有则尝试重新放置
@@ -1152,7 +1203,7 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                       while (attempts < maxAttempts) {
                         attempts++;
                         console.log(`放置方块失败: ${err.message}，尝试重新放置 (${attempts}/${maxAttempts}): ${block.name} at (${worldPos.x}, ${worldPos.y}, ${worldPos.z})`);
-                        await new Promise(resolve => setTimeout(resolve, 500)); // 等待500ms后重试
+                        await new Promise(resolve => setTimeout(resolve, 100)); // 等待100ms后重试
                         try {
                             // 重试前检查并确保手中有正确的方块
                             const blockItem = bot.inventory.items().find(item => item.name === block.name);
@@ -1160,7 +1211,9 @@ async function buildWithSetblockByRegion(schematicData, startPos) {
                               console.log(`背包中没有找到方块: ${block.name}，无法继续重试`);
                               break;
                             }
-                            await bot.equip(blockItem, 'hand');
+                            if (!bot.heldItem || bot.heldItem.name !== block.name) {
+                              await bot.equip(blockItem, 'hand');
+                            }
                             await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
                           let retryPlacedBlock = bot.blockAt(worldPos);
                           if (retryPlacedBlock && retryPlacedBlock.name !== 'air') {
@@ -1312,7 +1365,9 @@ async function fillMissingBlocks(missingBlocks, schematic, startPos) {
         // 确保手中有正确的方块
         const blockItem = bot.inventory.items().find(item => item.name === blockName);
         if (blockItem) {
-          await bot.equip(blockItem, 'hand');
+          if (!bot.heldItem || bot.heldItem.name !== blockName) {
+            await bot.equip(blockItem, 'hand');
+          }
           
           // 尝试放置方块
           let attempts = 0;
@@ -1332,10 +1387,10 @@ async function fillMissingBlocks(missingBlocks, schematic, startPos) {
                 completedBlocks++;
                 renderProgressBar();
               }
-              await new Promise(resolve => setTimeout(resolve, 100));
+              await new Promise(resolve => setTimeout(resolve, 0));
             } catch (err) {
               console.log(`尝试补全方块失败: ${err.message} (${attempts}/${maxAttempts})`);
-              await new Promise(resolve => setTimeout(resolve, 500));
+              await new Promise(resolve => setTimeout(resolve, 100));
             }
           }
           
@@ -1355,12 +1410,19 @@ async function fillMissingBlocks(missingBlocks, schematic, startPos) {
 }
 
 // 主函数
-async function main() {
+async function main(options = {}) {
   try {
     console.log('开始执行主函数...');
-    // 加载投影文件
-    const schematicData = await loadSchematic('./litematic/23.schem');
+    // 投影文件与搭建坐标均由网页传入，程序内不再内置默认值
+    if (!options.schematic) {
+      throw new Error('缺少投影文件(schematic)，请通过网页上传');
+    }
+    if (!options.startPos) {
+      throw new Error('缺少搭建起始坐标(startPos)，请通过网页设置');
+    }
+    const schematicData = await loadSchematic(options.schematic);
     const { schematic, width, height, length } = schematicData;
+    const startPos = new Vec3(options.startPos.x, options.startPos.y, options.startPos.z);
     
     // 计算总方块数并初始化进度条
     let blockCount = 0;
@@ -1388,10 +1450,13 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     // 按区域建造投影
-    await buildWithSetblockByRegion(schematicData, buildStartPos);
+    await buildWithSetblockByRegion(schematicData, startPos);
 
     // 建造完成
     console.log('\n建造完成');
+    if (typeof progressHandler === 'function') {
+      progressHandler(getProgressState());
+    }
     notifier.notify({
       appID: 'PaintingBot',
       icon: './success.png',
@@ -1402,8 +1467,21 @@ async function main() {
   } catch (err) {
     console.error('执行过程中发生错误:', err);
     bot.quit();
+    throw err;
   }
 }
 
-// 启动机器人
-createBot();
+module.exports = {
+  createBot,
+  main,
+  loadSchematic,
+  setProgressHandler,
+  getProgressState,
+  getBot,
+  materialChests
+};
+
+// 直接运行时启动机器人
+if (require.main === module) {
+  createBot();
+}

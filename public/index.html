@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>地图画搭建控制台</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #181b22;
+      --panel2: #1f232d;
+      --border: #2a2f3a;
+      --text: #e7eaf0;
+      --muted: #8b93a3;
+      --accent: #4f8cff;
+      --accent2: #22c55e;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .card h2 { font-size: 15px; margin: 0 0 14px; color: var(--text); }
+    .card.full { grid-column: 1 / -1; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+    .field input, .field select {
+      width: 100%;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 9px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; border: none; border-radius: 8px; cursor: pointer;
+      font-size: 14px; font-weight: 600; padding: 11px 18px;
+      transition: opacity .15s, transform .05s;
+    }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn:active:not(:disabled) { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+    .actions { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 10px;
+      padding: 26px; text-align: center; color: var(--muted);
+      cursor: pointer; transition: border-color .15s, background .15s;
+    }
+    .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--panel2); }
+    .upload-zone .icon { font-size: 30px; }
+    .file-info { font-size: 13px; color: var(--accent2); margin-top: 10px; display: none; }
+    .file-info.show { display: block; }
+    .progress-track {
+      height: 22px; background: var(--panel2); border-radius: 11px;
+      overflow: hidden; border: 1px solid var(--border);
+    }
+    .progress-fill {
+      height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .3s ease;
+    }
+    .progress-num { font-size: 32px; font-weight: 700; margin: 8px 0 4px; }
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 14px; }
+    .stat { background: var(--panel2); border-radius: 8px; padding: 10px 12px; }
+    .stat .k { font-size: 11px; color: var(--muted); }
+    .stat .v { font-size: 15px; font-weight: 600; margin-top: 2px; word-break: break-all; }
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px; font-size: 12px; margin-bottom: 14px;
+      background: var(--panel2); border: 1px solid var(--border);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .dot.running { background: var(--accent2); animation: pulse 1.2s infinite; }
+    .dot.error { background: var(--danger); }
+    .dot.done { background: var(--accent2); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+    .log {
+      background: #0a0c10; border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px; height: 180px; overflow-y: auto; font-family: ui-monospace, Consolas, monospace;
+      font-size: 12px; color: #c9d1d9; white-space: pre-wrap;
+    }
+    .muted { color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>地图画搭建控制台</h1>
+    <div class="sub">导入地图画投影文件，设置搭建坐标，一键开始建造并实时查看进度</div>
+
+    <div class="card full" style="margin-bottom:20px;">
+      <div class="status-badge" id="statusBadge">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">空闲</span>
+      </div>
+      <div class="progress-num" id="progressPercent">0.0%</div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="stats">
+        <div class="stat"><div class="k">方块进度</div><div class="v" id="statBlocks">0 / 0</div></div>
+        <div class="stat"><div class="k">已用时间</div><div class="v" id="statElapsed">--</div></div>
+        <div class="stat"><div class="k">剩余时间</div><div class="v" id="statRemaining">--</div></div>
+        <div class="stat"><div class="k">当前区域</div><div class="v" id="statRegion">--</div></div>
+        <div class="stat" style="grid-column:1/-1;"><div class="k">当前方块</div><div class="v" id="statBlock">--</div></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>1. 服务器连接</h2>
+        <div class="row">
+          <div class="field"><label>服务器地址</label><input id="host" value="wolfx.jp" /></div>
+          <div class="field"><label>端口</label><input id="port" type="number" value="25565" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>用户名</label><input id="username" value="paintingbot" /></div>
+          <div class="field"><label>版本</label><input id="version" value="1.20.4" /></div>
+        </div>
+        <div class="field">
+          <label>认证方式</label>
+          <select id="auth">
+            <option value="microsoft" selected>microsoft（正版）</option>
+            <option value="offline">offline（离线）</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2. 导入地图画投影</h2>
+        <div class="upload-zone" id="uploadZone">
+          <div class="icon">⬆️</div>
+          <div>点击选择或拖拽 .schem / .litematic 投影文件到此处</div>
+          <div class="muted" style="margin-top:4px;">.litematic 文件会自动转换为 .schem</div>
+          <div class="file-info" id="fileInfo"></div>
+        </div>
+        <input type="file" id="fileInput" accept=".schem,.litematic" style="display:none;" />
+      </div>
+
+      <div class="card">
+        <h2>3. 搭建坐标</h2>
+        <div class="row3">
+          <div class="field"><label>起始 X</label><input id="startX" type="number" value="37439" /></div>
+          <div class="field"><label>起始 Y</label><input id="startY" type="number" placeholder="请输入 Y" /></div>
+          <div class="field"><label>起始 Z</label><input id="startZ" type="number" value="13887" /></div>
+        </div>
+        <p class="muted">坐标对应投影文件原点 (0,0,0) 在实际世界中的位置。</p>
+      </div>
+
+      <div class="card">
+        <h2>4. 建造控制</h2>
+        <div class="actions">
+          <button class="btn btn-primary" id="startBtn">开始建造</button>
+          <button class="btn btn-danger" id="stopBtn" disabled>停止</button>
+        </div>
+        <p class="muted" style="margin-top:12px;" id="hint">请依次完成：上传投影 → 设置坐标 → 开始建造。</p>
+      </div>
+
+      <div class="card full">
+        <h2>运行日志</h2>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const socket = io();
+
+    let selectedFile = null;
+
+    function fmtTime(sec) {
+      if (sec === null || sec === undefined || isNaN(sec)) return '--';
+      sec = Math.floor(sec);
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      if (h > 0) return `${h}h ${m}m ${s}s`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function log(msg) {
+      const el = $('log');
+      const time = new Date().toLocaleTimeString();
+      el.textContent += `[${time}] ${msg}\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function setStatus(state, message) {
+      const dot = $('statusDot');
+      const text = $('statusText');
+      dot.className = 'dot';
+      if (state === 'connecting' || state === 'building') dot.classList.add('running');
+      if (state === 'error') dot.classList.add('error');
+      if (state === 'done') dot.classList.add('done');
+      text.textContent = message;
+      log(message);
+    }
+
+    socket.on('progress', (p) => {
+      if (!p || !p.totalBlocks) return;
+      const pct = p.progress.toFixed(1);
+      $('progressFill').style.width = pct + '%';
+      $('progressPercent').textContent = pct + '%';
+      $('statBlocks').textContent = `${p.completedBlocks} / ${p.totalBlocks}`;
+      $('statElapsed').textContent = fmtTime(p.elapsedSeconds);
+      $('statRemaining').textContent = p.remainingSeconds === null ? '估算中...' : fmtTime(p.remainingSeconds);
+      $('statRegion').textContent = p.currentRegion || '--';
+      $('statBlock').textContent = p.currentBlockInfo || '--';
+    });
+
+    socket.on('status', (data) => {
+      setStatus(data.state, data.message || '');
+      const running = data.state === 'connecting' || data.state === 'building';
+      $('startBtn').disabled = running;
+      $('stopBtn').disabled = !running;
+    });
+
+    // 文件上传
+    const zone = $('uploadZone');
+    const fileInput = $('fileInput');
+    zone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault(); zone.classList.remove('drag');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+
+    async function handleFile(file) {
+      selectedFile = file;
+      $('fileInfo').textContent = `已选择: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+      $('fileInfo').classList.add('show');
+      uploadFile();
+    }
+
+    async function uploadFile() {
+      if (!selectedFile) return;
+      log(`正在上传投影文件: ${selectedFile.name} ...`);
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': selectedFile.name },
+          body: selectedFile
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '上传失败');
+        const convText = data.converted ? '（已自动转换为 .schem）' : '';
+        $('fileInfo').textContent = `已上传: ${data.name} (${(data.size / 1024).toFixed(1)} KB)${convText}`;
+        log(`上传成功: ${data.name}${convText}`);
+      } catch (err) {
+        log('上传失败: ' + err.message);
+      }
+    }
+
+    $('startBtn').addEventListener('click', async () => {
+      const body = {
+        host: $('host').value.trim(),
+        port: $('port').value.trim(),
+        username: $('username').value.trim(),
+        version: $('version').value.trim(),
+        auth: $('auth').value,
+        startX: $('startX').value.trim(),
+        startY: $('startY').value.trim(),
+        startZ: $('startZ').value.trim()
+      };
+      try {
+        const res = await fetch('/api/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '启动失败');
+        log('已发送建造指令，等待机器人连接...');
+      } catch (err) {
+        log('启动失败: ' + err.message);
+        setStatus('error', err.message);
+      }
+    });
+
+    $('stopBtn').addEventListener('click', async () => {
+      try {
+        await fetch('/api/stop', { method: 'POST' });
+      } catch (err) {
+        log('停止失败: ' + err.message);
+      }
+    });
+
+    // 初始状态
+    fetch('/api/status').then(r => r.json()).then((s) => {
+      if (s.uploaded) {
+        $('fileInfo').textContent = `已上传: ${s.uploaded.name} (${(s.uploaded.size / 1024).toFixed(1)} KB)`;
+        $('fileInfo').classList.add('show');
+      }
+    }).catch(() => {});
+  </script>
+</body>
+</html>
