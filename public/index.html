@@ -103,18 +103,33 @@
       font-size: 12px; color: #c9d1d9; white-space: pre-wrap;
     }
     .muted { color: var(--muted); font-size: 12px; }
+    .bots { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .bot-chip {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+      background: var(--panel2); border: 1px solid var(--border);
+      border-radius: 999px; padding: 4px 10px;
+    }
+    .map-wrap {
+      background: #0a0c10; border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px; display: flex; justify-content: center;
+    }
+    #mapCanvas { width: 100%; max-width: 520px; height: auto; image-rendering: pixelated; }
+    .map-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+    .map-legend .item { display: inline-flex; align-items: center; gap: 5px; }
+    .map-legend .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255,255,255,.15); }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>地图画搭建控制台</h1>
-    <div class="sub">导入地图画投影文件，设置搭建坐标，一键开始建造并实时查看进度</div>
+    <div class="sub">导入地图画投影文件，两个机器人账号各建造一半，实时查看进度与俯视建造图</div>
 
     <div class="card full" style="margin-bottom:20px;">
       <div class="status-badge" id="statusBadge">
         <span class="dot" id="statusDot"></span>
         <span id="statusText">空闲</span>
       </div>
+      <div class="bots" id="botsStrip"></div>
       <div class="progress-num" id="progressPercent">0.0%</div>
       <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
       <div class="stats">
@@ -126,6 +141,13 @@
       </div>
     </div>
 
+    <div class="card full" style="margin-bottom:20px;">
+      <h2>实时建造图（俯视）</h2>
+      <div class="map-wrap"><canvas id="mapCanvas"></canvas></div>
+      <div class="map-legend" id="mapLegend"></div>
+      <div class="muted" style="margin-top:8px;" id="mapInfo">等待开始...</div>
+    </div>
+
     <div class="grid">
       <div class="card">
         <h2>1. 服务器连接</h2>
@@ -134,15 +156,31 @@
           <div class="field"><label>端口</label><input id="port" type="number" value="25565" /></div>
         </div>
         <div class="row">
-          <div class="field"><label>用户名</label><input id="username" value="paintingbot" /></div>
+          <div class="field"><label>机器人账号 1</label><input id="username1" value="paintingbot1" /></div>
+          <div class="field"><label>机器人账号 2</label><input id="username2" value="paintingbot2" /></div>
+        </div>
+        <div class="row">
           <div class="field"><label>版本</label><input id="version" value="1.20.4" /></div>
+          <div class="field">
+            <label>认证方式</label>
+            <select id="auth">
+              <option value="microsoft" selected>microsoft（正版）</option>
+              <option value="offline">offline（离线）</option>
+            </select>
+          </div>
         </div>
         <div class="field">
-          <label>认证方式</label>
-          <select id="auth">
-            <option value="microsoft" selected>microsoft（正版）</option>
-            <option value="offline">offline（离线）</option>
+          <label>每个机器人连续放置数（1~4，默认 4）</label>
+          <select id="placeConcurrency">
+            <option value="1">1（最稳，最慢）</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4" selected>4（默认，最快）</option>
           </select>
+        </div>
+        <div class="field">
+          <label>账号连接间隔（秒，默认 5）</label>
+          <input id="connectInterval" type="number" min="0" step="1" value="5" />
         </div>
       </div>
 
@@ -151,7 +189,7 @@
         <div class="upload-zone" id="uploadZone">
           <div class="icon">⬆️</div>
           <div>点击选择或拖拽 .schem / .litematic 投影文件到此处</div>
-          <div class="muted" style="margin-top:4px;">.litematic 文件会自动转换为 .schem</div>
+          <div class="muted" style="margin-top:4px;">.litematic 直接解析（解析失败才自动用 Lite2Edit 转换）</div>
           <div class="file-info" id="fileInfo"></div>
         </div>
         <input type="file" id="fileInput" accept=".schem,.litematic" style="display:none;" />
@@ -160,20 +198,27 @@
       <div class="card">
         <h2>3. 搭建坐标</h2>
         <div class="row3">
-          <div class="field"><label>起始 X</label><input id="startX" type="number" value="37439" /></div>
+          <div class="field"><label>起始 X</label><input id="startX" type="number" value="37311" /></div>
           <div class="field"><label>起始 Y</label><input id="startY" type="number" placeholder="请输入 Y" /></div>
-          <div class="field"><label>起始 Z</label><input id="startZ" type="number" value="13887" /></div>
+          <div class="field"><label>起始 Z</label><input id="startZ" type="number" value="14015" /></div>
         </div>
         <p class="muted">坐标对应投影文件原点 (0,0,0) 在实际世界中的位置。</p>
       </div>
 
       <div class="card">
         <h2>4. 建造控制</h2>
+        <div class="field">
+          <label>放置模式</label>
+          <select id="placeMode">
+            <option value="fast" selected>极速（同一 tick 连发，服务器无反作弊时用）</option>
+            <option value="safe">稳定（逐块确认，兼容反作弊服务器）</option>
+          </select>
+        </div>
         <div class="actions">
           <button class="btn btn-primary" id="startBtn">开始建造</button>
           <button class="btn btn-danger" id="stopBtn" disabled>停止</button>
         </div>
-        <p class="muted" style="margin-top:12px;" id="hint">请依次完成：上传投影 → 设置坐标 → 开始建造。</p>
+        <p class="muted" style="margin-top:12px;" id="hint">请依次完成：填写两个机器人账号 → 上传投影 → 设置坐标 → 开始建造。两个机器人会各搭建地图画的一半。</p>
       </div>
 
       <div class="card full">
@@ -218,6 +263,151 @@
       text.textContent = message;
       log(message);
     }
+
+    /* ---------- 实时建造图（俯视） ---------- */
+    const mapCanvas = $('mapCanvas');
+    const mapCtx = mapCanvas.getContext('2d');
+    const MAP_BG = [15, 17, 21];
+    let mapState = null;
+    let mapRenderQueued = false;
+
+    function decodeBase64(str) {
+      const bin = atob(str || '');
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    }
+
+    function hexToRgb(hex) {
+      const value = (hex || '#888888').replace('#', '');
+      return [
+        parseInt(value.slice(0, 2), 16),
+        parseInt(value.slice(2, 4), 16),
+        parseInt(value.slice(4, 6), 16),
+      ];
+    }
+
+    function scheduleMapRender() {
+      if (mapRenderQueued) return;
+      mapRenderQueued = true;
+      requestAnimationFrame(() => {
+        mapRenderQueued = false;
+        renderMap();
+      });
+    }
+
+    function renderMap() {
+      if (!mapState) return;
+      const { viewWidth, viewHeight, legend, plan, placed } = mapState;
+      mapCanvas.width = viewWidth;
+      mapCanvas.height = viewHeight;
+
+      const image = mapCtx.createImageData(viewWidth, viewHeight);
+      for (let i = 0; i < plan.length; i++) {
+        let r = MAP_BG[0];
+        let g = MAP_BG[1];
+        let b = MAP_BG[2];
+        const legendId = plan[i];
+        if (legendId > 0) {
+          const [cr, cg, cb] = hexToRgb(legend[legendId].color);
+          if (placed[i]) {
+            r = cr;
+            g = cg;
+            b = cb;
+          } else {
+            // 未建造：与背景混合成暗色预览
+            r = Math.round(MAP_BG[0] + (cr - MAP_BG[0]) * 0.25);
+            g = Math.round(MAP_BG[1] + (cg - MAP_BG[1]) * 0.25);
+            b = Math.round(MAP_BG[2] + (cb - MAP_BG[2]) * 0.25);
+          }
+        }
+        const offset = i * 4;
+        image.data[offset] = r;
+        image.data[offset + 1] = g;
+        image.data[offset + 2] = b;
+        image.data[offset + 3] = 255;
+      }
+      mapCtx.putImageData(image, 0, 0);
+
+      updateMapInfo();
+    }
+
+    function renderMapLegend() {
+      const el = $('mapLegend');
+      el.innerHTML = '';
+      if (!mapState) return;
+      mapState.legend.forEach((entry, index) => {
+        if (index === 0) return;
+        const item = document.createElement('span');
+        item.className = 'item';
+        const swatch = document.createElement('span');
+        swatch.className = 'sw';
+        swatch.style.background = entry.color;
+        item.appendChild(swatch);
+        item.appendChild(document.createTextNode(entry.name));
+        el.appendChild(item);
+      });
+    }
+
+    function updateMapInfo() {
+      if (!mapState) {
+        $('mapInfo').textContent = '等待开始...';
+        return;
+      }
+      let placedCount = 0;
+      for (let i = 0; i < mapState.placed.length; i++) placedCount += mapState.placed[i] ? 1 : 0;
+      const total = mapState.viewWidth * mapState.viewHeight;
+      $('mapInfo').textContent = `已建造 ${placedCount} / ${total} 格（暗色为未建造预览）`;
+    }
+
+    socket.on('map', (data) => {
+      mapState = {
+        ...data,
+        plan: decodeBase64(data.plan),
+        placed: decodeBase64(data.placed),
+      };
+      renderMapLegend();
+      renderMap();
+    });
+
+    socket.on('cell', (cell) => {
+      if (!mapState) return;
+      const x = cell.x - mapState.minX;
+      const z = cell.z - mapState.minZ;
+      if (x < 0 || z < 0 || x >= mapState.viewWidth || z >= mapState.viewHeight) return;
+      mapState.placed[z * mapState.viewWidth + x] = 1;
+      scheduleMapRender();
+    });
+
+    socket.on('bots', (bots) => {
+      const el = $('botsStrip');
+      el.innerHTML = '';
+      (bots || []).forEach((bot, index) => {
+        const chip = document.createElement('span');
+        chip.className = 'bot-chip';
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        if (bot.state && (bot.state.includes('搭建') || bot.state.includes('已连接'))) dot.classList.add('running');
+        chip.appendChild(dot);
+        chip.appendChild(document.createTextNode(`${index + 1}号 ${bot.username}: ${bot.state || '待命'}`));
+        el.appendChild(chip);
+      });
+    });
+
+    // 鼠标悬停查看某一格的计划方块与建造状态
+    mapCanvas.addEventListener('mousemove', (event) => {
+      if (!mapState) return;
+      const rect = mapCanvas.getBoundingClientRect();
+      const x = Math.floor((event.clientX - rect.left) / rect.width * mapState.viewWidth);
+      const z = Math.floor((event.clientY - rect.top) / rect.height * mapState.viewHeight);
+      if (x < 0 || z < 0 || x >= mapState.viewWidth || z >= mapState.viewHeight) return;
+      const index = z * mapState.viewWidth + x;
+      const legendId = mapState.plan[index];
+      const name = legendId > 0 ? mapState.legend[legendId].name : '空气';
+      const state = mapState.placed[index] ? '已建造' : '未建造';
+      $('mapInfo').textContent = `X: ${x + mapState.minX}, Z: ${z + mapState.minZ} | ${name}（${state}）`;
+    });
+    mapCanvas.addEventListener('mouseleave', updateMapInfo);
 
     socket.on('progress', (p) => {
       if (!p || !p.totalBlocks) return;
@@ -282,9 +472,12 @@
       const body = {
         host: $('host').value.trim(),
         port: $('port').value.trim(),
-        username: $('username').value.trim(),
+        usernames: [$('username1').value.trim(), $('username2').value.trim()],
         version: $('version').value.trim(),
         auth: $('auth').value,
+        placeConcurrency: $('placeConcurrency').value,
+        fastPlace: $('placeMode').value === 'fast',
+        connectIntervalMs: Number($('connectInterval').value || 5) * 1000,
         startX: $('startX').value.trim(),
         startY: $('startY').value.trim(),
         startZ: $('startZ').value.trim()
