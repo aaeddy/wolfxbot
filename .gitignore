@@ -5,3 +5,7 @@ block_info_output.txt
 tmp.js
 logs
 debug.log
+
+# 另一个服务器用的脚本，不提交到本仓库
+/cat/
+/bangdream/
