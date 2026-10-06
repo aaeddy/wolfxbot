@@ -4,8 +4,7 @@
   "description": "A bot for automatically building structures in Minecraft using projections",
   "main": "painting.js",
   "scripts": {
-    "start": "node painting.js",
-    "web": "node server.js"
+    "web": "node manager.js"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",

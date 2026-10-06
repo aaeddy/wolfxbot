@@ -103,6 +103,8 @@
       font-size: 12px; color: #c9d1d9; white-space: pre-wrap;
     }
     .muted { color: var(--muted); font-size: 12px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
     .bots { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .bot-chip {
       display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
@@ -122,7 +124,7 @@
 <body>
   <div class="wrap">
     <h1>地图画搭建控制台</h1>
-    <div class="sub">导入地图画投影文件，两个机器人账号各建造一半，实时查看进度与俯视建造图</div>
+    <div class="sub">导入地图画投影文件，两个机器人账号一起搭建，实时查看进度与俯视建造图 · <a href="/">← 进程管理器</a></div>
 
     <div class="card full" style="margin-bottom:20px;">
       <div class="status-badge" id="statusBadge">
