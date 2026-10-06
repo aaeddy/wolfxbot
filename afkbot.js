@@ -1,8 +1,8 @@
 const mineflayer = require('mineflayer')
 const autoeat = require('mineflayer-auto-eat').plugin
 var tpsPlugin = require('mineflayer-tps')(mineflayer)
-const { async } = require('plugins/iterators')
 const fs = require('fs')
+const path = require('path')
 const readline = require('readline')
 const moment = require('moment')
 const navigatePlugin = require('mineflayer-navigate')
@@ -13,9 +13,110 @@ const Let_it_move = require('./Let_it_move.js')
 const _ = require('lodash')
 const { setInterval } = require('timers')
 
+// 兜底：异步回调里抛出的错误只记录，不让整个机器人进程退出
+process.on('unhandledRejection', (err) => {
+  console.error('未处理的异步错误（已忽略，进程继续运行）:', err)
+})
+
+/* ============================================================
+ * 定时发言（时间戳写进文件，afkbot 被管理器每 30 分钟重启一次也不会漏发）
+ *   原来的 setInterval 一重启就清零，所以 60 分钟 / 1000 分钟的广告永远发不出来。
+ *   现在改成：每次启动读文件，算“距离上次发送过了多久”，
+ *   到点就补发一次（只补一次，不会因为离线太久刷屏），然后把新时间写回文件。
+ * ============================================================ */
+// 数据文件都用 __dirname 定位：不管从哪个目录启动，读写都落在项目文件夹里
+const TIMER_STATE_FILE = path.join(__dirname, 'afk_timers.json')
+
+const CHAT_TIMERS = [
+  {
+    key: 'ads',
+    everyMs: 60 * 60 * 1000,           // 每 60 分钟
+    name: '两条广告',
+    send: (bot) => {
+      bot.chat('向我付款30w(/pay TenkyuCh1mata 300000)即可获得VIP享特权！')
+      bot.chat('今天买买币，明天上榜一！出游戏币1:150w，加Q：2186594020，享最大利润！')
+    },
+  },
+  {
+    key: 'checkin',
+    everyMs: 1000 * 60 * 1000,         // 每 1000 分钟
+    name: '签到提示',
+    send: (bot) => {
+      bot.chat('输入 $签到 以获得奖励！--- Type $CheckIn to check in and get rewards!')
+    },
+  },
+  {
+    key: 'pm',
+    everyMs: 3 * 60 * 1000,            // 每 3 分钟
+    name: '/pm',
+    send: (bot) => bot.chat('/pm'),
+  },
+]
+
+let currentBot = null
+let chatTimerState = {}
+
+function loadChatTimerState() {
+  try {
+    return JSON.parse(fs.readFileSync(TIMER_STATE_FILE, 'utf8'))
+  } catch (err) {
+    return {}
+  }
+}
+
+function saveChatTimerState() {
+  try {
+    fs.writeFileSync(TIMER_STATE_FILE, JSON.stringify(chatTimerState), 'utf8')
+  } catch (err) {
+    console.error('定时发言状态保存失败:', err.message)
+  }
+}
+
+// 能不能发言：进服并且底层聊天通道可用（没进服时 bot._client.chat 不存在）
+function canChat(bot) {
+  return !!bot && !!bot.entity && !!bot._client && typeof bot._client.chat === 'function'
+}
+
+function checkChatTimers() {
+  const bot = currentBot
+  if (!canChat(bot)) return
+
+  const now = Date.now()
+  let changed = false
+  for (const timer of CHAT_TIMERS) {
+    const last = chatTimerState[timer.key]
+    if (typeof last !== 'number') {
+      chatTimerState[timer.key] = now
+      changed = true
+      continue
+    }
+    if (now - last < timer.everyMs) continue
+
+    try {
+      timer.send(bot)
+      chatTimerState[timer.key] = now
+      changed = true
+      console.log(`[定时] 已发送${timer.name}（距离上次 ${Math.round((now - last) / 60000)} 分钟）`)
+    } catch (err) {
+      console.error(`[定时] 发送${timer.name}失败: ${err.message}`)
+    }
+  }
+  if (changed) saveChatTimerState()
+}
+
+// 初始化：文件里没有记录的定时器，以当前时间为起点（也就是 60 分钟后才会第一次发广告）
+chatTimerState = loadChatTimerState()
+for (const timer of CHAT_TIMERS) {
+  if (typeof chatTimerState[timer.key] !== 'number') chatTimerState[timer.key] = Date.now()
+}
+saveChatTimerState()
+
+// 每 15 秒检查一次（只在模块加载时建一次，重连不会重复叠加）
+setInterval(checkChatTimers, 15000)
+
 function createBot() {
   const bot = mineflayer.createBot({
-  host: 'wolfxmc.org',
+  host: 'wolfx.jp',
   username: 'afkbot',
   // password: 'Sacramouche114514',
   // port: 25565,
@@ -45,29 +146,30 @@ bot.once('spawn', () => {
 bot.once('spawn', async () => {
   bot.chat('/res tp dyyz')
   await sleep(1500)
-  bot.chat('我来咯(＾－＾)V')
   bot.on('playerJoined', (player) => {
     if (blacklist.includes(player.username)) {
       return
     } else if (whitelist.includes(player.username)) {
       if (oplist.includes(player.username)) {
-        if (player.username === 'Misaka_12479'){
+        if (player.username === 'Rikka_12479'){
           bot.chat(`${player.username} 上线咯，主人好\\(^o^)/~`)
-        } else if (player.username === 'Love_u_Mengtong') {
+        } else if (player.username === 'AEddyQWQ') {
           bot.chat(`${player.username} 上线咯，主人好\\(^o^)/~`)
         } else bot.chat(`尊贵的MVP玩家 ${player.username} 进入了服务器!`)
       } else bot.chat(`尊贵的VIP玩家 ${player.username} 进入了服务器!`)
     } else return
   })
+
+  currentBot = bot
   bot.on('playerLeft', (player) => {
     if (player.username === '__Accelerator__') return
-    if (player.username === bot.username) {
-     return
-    } else if (player.username === 'Misaka_12479'){
+    if (player.username === bot.username) return
+    if (player.username === 'Rikka_12479') {
       bot.chat(`${player.username} 下了`)
-    } else if (player.username === 'Love_u_Mengtong'){
-        bot.chat(`${player.username} 下了`)
-      } else bot.chat(`${player.username}离开了游戏`)
+    } else if (player.username === 'AEddyQWQ') {
+      bot.chat(`${player.username} 下了`)
+    }
+    // 其它普通玩家离开时不再播报
   })
 })
 
@@ -88,20 +190,8 @@ bot.on('playerLeft', (player) => {
   removePlayerFromOnlinePlayers(newLeftPlayer)
 })
 
-bot.once('spawn', () => {
-  setInterval(() => {
-   bot.chat('向我付款30w(/pay M1ku_233 300000)即可获得VIP享特权！')
-   bot.chat('今天搬搬砖，明天上榜一！res tp best 公益搬砖，享搬砖最大利润！')
- }, 6000000)
-
- setInterval(() => {
-  bot.chat('输入 $签到 以获得奖励！--- Type $CheckIn to check in and get rewards!')
-}, 60000000)
-
-  setInterval(() => {
-    bot.chat('/pm')
-  }, 180000)
-})
+// 定时发言已改为“文件记录 + 到点补发”，见上面 CHAT_TIMERS
+// （这样被管理器每 30 分钟重启一次也不会漏发 60 分钟 / 1000 分钟的广告）
 
  const railgun = [
   '未来さえ置き去りにして',
@@ -252,8 +342,8 @@ bot.on('message', async (jsonMsg) => {
       }
     }
   }
-  if (msg.startsWith('余额：')){
-    const bal = msg.replace('余额：', '')
+  if (msg.startsWith('Balance: ')){
+    const bal = msg.replace('Balance: ', '')
     await sleep(100)
     bot.chat(`当前我的余额: ${bal}`)
   }
@@ -269,7 +359,7 @@ bot.on('chat', async (username, message) => {
     if (message === '$only my railgun')
     singRailgun()
     if (message === '$tps')
-    bot.chat(`当前服务器tps: ${bot.getTps()}`)
+    bot.chat(`Bot 所在区域 TPS: ${bot.getTps()}`)
 })
 
 bot.on('chat', async(username, message) => {
@@ -287,7 +377,7 @@ bot.on('chat', async(username, message) => {
   }
 })
 
-const oplist = ['Misaka_12479', 'CRe0lei', 'Love_u_Mengtong', 'skafdkjd', 'Arctic_RG', 'DickytheMicky', '__Accelerator__']
+const oplist = ['Misaka_12479', 'CRe0lei', 'Love_u_Mengtong', 'skafdkjd', 'Arctic_RG', 'DickytheMicky', '__Accelerator__', 'AEddyQWQ', 'Rikka_12479', 'Satoru_12479']
 
 bot.on('chat', async (username, message) => {
   if (!oplist.includes(username)) return
@@ -329,7 +419,7 @@ bot.on('chat', async (username, message) => {
   if(message === '$refreshOnlinePlayers') {
     bot.chat('在线玩家列表已刷新！')
   }
-  if (username === 'Misaka_12479' || username === 'Love_u_Mengtong') {
+  if (username === 'Rikka_12479' || username === 'AEddyQWQ') {
     if (message === '$100w') {
       bot.chat(`/pay ${username} 1000000`)
       bot.chat(`成功转账给 ${username} 1,000,000!`)
@@ -359,26 +449,33 @@ bot.loadPlugin(pathfinder)
 const move = Let_it_move(bot)
 
 bot.on('chat', async(username, message) => {
-  if (username === 'Misaka_12479' && message.startsWith('$go')) {
-    const goToPlayer = message.replace('$goTo ', '')
-    const target = bot.players[goToPlayer]
-    if (!target) {
-      bot.chat(`找不到目标玩家${goToPlayer}!`)
+  if (username === 'Rikka_12479' && message.startsWith('$go')) {
+    // 同时支持 $goTo <名字> 和 $go <名字>
+    const goToPlayer = message.replace(/^\$go(?:To)?\s+/, '').trim()
+    const playerInfo = bot.players[goToPlayer]
+    const targetEntity = playerInfo && playerInfo.entity
+    if (!targetEntity) {
+      bot.chat(`找不到目标玩家${goToPlayer}（不在线或不在视野内）!`)
       return
     }
-    bot.chat(`正在前往${goToPlayer}的位置.`)
-    bot.creative.startFlying()
-    move.relax_time(150)
-    move.long_long(8)
-    move.fly(new Vec3(target.entity.position.x, target.entity.position.y, target.entity.position.z))
+    try {
+      bot.chat(`正在前往${goToPlayer}的位置.`)
+      bot.creative.startFlying()
+      move.relax_time(150)
+      move.long_long(8)
+      move.fly(new Vec3(targetEntity.position.x, targetEntity.position.y, targetEntity.position.z))
+    } catch (err) {
+      bot.chat(`前往${goToPlayer}失败: ${err.message}`)
+      console.error('$go 执行失败:', err)
+    }
   }
-  if (username === 'Misaka_12479' && message.startsWith('$res tp')) {
+  if (username === 'Rikka_12479' && message.startsWith('$res tp')) {
     const residence = message.replace('$res tp ', '')
     bot.chat(`/res tp ${residence}`)
     await sleep(3000)
     bot.chat(`已到达 ${residence} 领地!`)
   }
-  if (username === 'Misaka_12479' && message.startsWith('$tpa')) {
+  if (username === 'Rikka_12479' && message.startsWith('$tpa')) {
     const tpaPlayer = message.replace('$tpa ', '')
     bot.chat(`/tpa ${tpaPlayer}`)
     bot.chat('已发送tp请求!')
@@ -394,7 +491,7 @@ bot.on('spawn', () => {
   }, 100)
 })
 
-const onlinePlayersFile = 'onlinePlayers.txt'
+const onlinePlayersFile = path.join(__dirname, 'onlinePlayers.txt')
 let onlinePlayers = []
 
 function loadOnlinePlayers() {
@@ -458,7 +555,7 @@ function removeAllOnlinePlayers() {
   console.log('已清除在线玩家列表！')
 }
 
-const whitelistFile = 'whitelist.txt'
+const whitelistFile = path.join(__dirname, 'whitelist.txt')
 let whitelist = []
 
 function loadWhitelist() {
@@ -516,7 +613,7 @@ function removePlayerFromWhitelist(player) {
   }
 }
 
-const blacklistFile = 'blacklist.txt'
+const blacklistFile = path.join(__dirname, 'blacklist.txt')
 
 let blacklist = []
 
@@ -573,7 +670,7 @@ bot.on('chat', (username, message) => {
     bot.chat(`/msg ${username} 先传送到搬砖领地，购买一背包的砖(皮革、烤马铃薯等)，然后/warp shop 找到对应的商店出售全部的砖，即可完成一趟搬砖。`)
 })
 
-const tabFilePath = './tab.json'
+const tabFilePath = path.join(__dirname, 'tab.json')
 
 let tabData = {}
 try {
@@ -617,7 +714,7 @@ function removeAllTabData() {
   tabData = {}
 }
 
-const signInFilePath = './check_in_data.json'
+const signInFilePath = path.join(__dirname, 'check_in_data.json')
 
 let signInData = {}
 try {

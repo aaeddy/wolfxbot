@@ -1,6 +1,5 @@
 const mineflayer = require('mineflayer')
 const Vec3 = require('vec3')
-const { async } = require('plugins/iterators')
 const autoeat = require('mineflayer-auto-eat').plugin
 const mcData = require('minecraft-data')('1.16.5')
 const readline = require('readline')
