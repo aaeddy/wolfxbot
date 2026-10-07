@@ -19,6 +19,24 @@ process.on('unhandledRejection', (err) => {
 })
 
 /* ============================================================
+ * 断线重启（不再原地重连）
+ *   以前掉线是 setTimeout(createBot) 在同一个进程里重连，但微软登录服务器不稳定时
+ *   （例如 "Failed to obtain profile data for afkbot, does the account own minecraft?"）
+ *   原地重连每次都会是同一个错误，只有重新启动一个进程才能重新登录成功。
+ *   所以现在断线一律退出进程，交给管理器（manager.js / start.js）重新拉起。
+ *   注意：直接 `node afkbot.js` 单独运行不会被自动拉起，请用 `npm run web` 启动管理器。
+ * ============================================================ */
+const RESTART_DELAY_MS = 1000   // 退出前留一点时间，让日志先刷出去
+let restarting = false
+
+function restartProcess(reason) {
+  if (restarting) return
+  restarting = true
+  console.log(`连接中断（${reason}），${RESTART_DELAY_MS / 1000} 秒后退出进程，由管理器重新启动...`)
+  setTimeout(() => process.exit(1), RESTART_DELAY_MS)
+}
+
+/* ============================================================
  * 定时发言（时间戳写进文件，afkbot 被管理器每 30 分钟重启一次也不会漏发）
  *   原来的 setInterval 一重启就清零，所以 60 分钟 / 1000 分钟的广告永远发不出来。
  *   现在改成：每次启动读文件，算“距离上次发送过了多久”，
@@ -125,8 +143,7 @@ function createBot() {
 })
 
 bot.on('end', () => {
-  console.log('连接中断，正在重连...')
-  setTimeout(createBot, 5000)
+  restartProcess('连接已断开')
 })
 
 bot.on('message', (message) => {
@@ -780,7 +797,13 @@ rl.on('line', (input) => {
 
 
 bot.on('kicked', console.log)
-bot.on('error', console.log)
+bot.on('error', (err) => {
+  console.log(err)
+  // 微软登录失败：原地重连没有用，直接退出进程重新登录
+  if (/Failed to obtain profile|does the account own minecraft|InvalidCredentials/i.test(err.message || '')) {
+    restartProcess('微软登录失败')
+  }
+})
 
 return bot
 }

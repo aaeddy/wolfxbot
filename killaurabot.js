@@ -6,7 +6,7 @@
  *   2. 等传送完成后，用“直接改客户端坐标”的方式站到自己的位置
  *      （账号 1：-46993, 242, 21272；账号 2：-46993, 242, 21274）
  *   3. 每 780ms 找 10 格内最近的 5 只疣猪（hoglin），拿剑看过去砍
- *   4. 被服务器拉走会自己站回原位；掉线 5 秒后自动重连
+ *   4. 被服务器拉走会自己站回原位；断线后退出进程，由管理器自动重启（两个账号一起重来）
  *
  * 注意：
  *   - 终端里输入的内容会同时发给两个账号（管理器网页的输入框同理）
@@ -39,7 +39,8 @@ const CONFIG = {
   sweepRange: 1.6,           // 判断“周围还有几只怪”用来挑最密集的目标（横扫范围约 1 格）
   statsLogMs: 30000,         // 每 30 秒汇报一次打怪次数
   teleportTimeoutMs: 15000,  // 等传送完成的最长时间
-  reconnectDelayMs: 5000,
+  // 断线后不再原地重连（见 restartProcess），而是退出进程让管理器重新启动
+  restartDelayMs: 1000,      // 退出进程前的等待时间（毫秒），留给日志刷出去
 }
 
 /* ============================================================
@@ -56,6 +57,24 @@ function log(tag, ...args) {
 // 兜底：不因为单个异常把整个进程搞崩
 process.on('unhandledRejection', (err) => console.error('未处理的异步错误（已忽略，进程继续运行）:', err))
 process.on('uncaughtException', (err) => console.error('未捕获的错误（已忽略，进程继续运行）:', err))
+
+/* ============================================================
+ * 断线重启（不再原地重连）
+ *   以前断线是 setTimeout(createBot) 在同一个进程里重连，但微软登录服务器不稳定时
+ *   （例如 "Failed to obtain profile data for killaurabot, does the account own minecraft?"）
+ *   原地重连每次都会是同一个错误，只有重新启动一个进程才能重新登录成功。
+ *   所以现在只要有一个账号断线，整个进程就退出，由管理器重新启动（两个账号一起重来）。
+ *   注意：直接 `node killaurabot.js` 单独运行不会被自动拉起，请用 `npm run web` 启动管理器。
+ * ============================================================ */
+const RESTART_DELAY_MS = CONFIG.restartDelayMs || 1000
+let restarting = false
+
+function restartProcess(reason) {
+  if (restarting) return
+  restarting = true
+  console.log(`${stamp()} [killaurabot] 连接中断（${reason}），${RESTART_DELAY_MS / 1000} 秒后退出进程，由管理器重新启动（两个账号一起重来）...`)
+  setTimeout(() => process.exit(1), RESTART_DELAY_MS)
+}
 
 // 等传送完成：位置移动超过 2 格就算传送成功
 async function waitTeleport(bot, timeoutMs) {
@@ -243,12 +262,17 @@ function createBot(account) {
   })
 
   bot.on('kicked', (reason) => log(tag, '被踢出:', reason))
-  bot.on('error', (err) => log(tag, '错误:', err.message))
+  bot.on('error', (err) => {
+    log(tag, '错误:', err.message)
+    // 微软登录失败：原地重连没有用，直接退出进程重新登录
+    if (/Failed to obtain profile|does the account own minecraft|InvalidCredentials/i.test(err.message || '')) {
+      restartProcess('微软登录失败')
+    }
+  })
 
   bot.on('end', () => {
     state.inGame = false
-    log(tag, `连接中断，${CONFIG.reconnectDelayMs / 1000} 秒后重连...`)
-    setTimeout(() => createBot(account), CONFIG.reconnectDelayMs)
+    restartProcess('连接已断开')
   })
 
   bot.once('spawn', async () => {

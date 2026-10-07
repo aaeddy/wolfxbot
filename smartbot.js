@@ -34,7 +34,8 @@ const CONFIG = {
   username: 'smartbot',
   version: '1.20.1',
   auth: 'microsoft',
-  reconnectDelayMs: 5000,
+  // 断线后不再原地重连（见 restartProcess），而是退出进程让管理器重新启动
+  restartDelayMs: 1000,      // 退出进程前的等待时间（毫秒），留给日志刷出去
 
   // ---- 传送点 ----
   farmTp: '/res tp best',    // 农场
@@ -81,6 +82,24 @@ let loopRunning = false
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const log = (...args) => console.log('[smartbot]', ...args)
+
+/* ============================================================
+ * 断线重启（不再原地重连）
+ *   以前断线是 setTimeout(createBot) 在同一个进程里重连，但微软登录服务器不稳定时
+ *   （例如 "Failed to obtain profile data for smartbot, does the account own minecraft?"）
+ *   原地重连每次都会是同一个错误，只有重新启动一个进程才能重新登录成功。
+ *   所以现在断线一律退出进程，交给管理器（manager.js / start.js）重新拉起。
+ *   注意：直接 `node smartbot.js` 单独运行不会被自动拉起，请用 `npm run web` 启动管理器。
+ * ============================================================ */
+const RESTART_DELAY_MS = CONFIG.restartDelayMs || 1000
+let restarting = false
+
+function restartProcess(reason) {
+  if (restarting) return
+  restarting = true
+  log(`连接中断（${reason}），${RESTART_DELAY_MS / 1000} 秒后退出进程，由管理器重新启动...`)
+  setTimeout(() => process.exit(1), RESTART_DELAY_MS)
+}
 
 // 给可能一直挂着的异步操作加超时（比如够不到箱子时 openContainer 不会返回）
 function withTimeout(promise, ms, what) {
@@ -285,7 +304,7 @@ async function runCycle(myBot) {
   await sleep(CONFIG.loopDelayMs)
 }
 
-// 工作循环：绑定在某个 bot 实例上，重连后旧循环会自动退出
+// 工作循环：绑定在某个 bot 实例上，进程重启后是全新的 bot 实例，旧循环自然结束
 async function workLoop(myBot) {
   while (myBot === bot) {
     try {
@@ -355,18 +374,23 @@ function createBot() {
   })
 
   bot.on('kicked', (reason) => log('被踢出:', reason))
-  bot.on('error', (err) => log('机器人错误:', err.message))
+  bot.on('error', (err) => {
+    log('机器人错误:', err.message)
+    // 微软登录失败：原地重连没有用，直接退出进程重新登录
+    if (/Failed to obtain profile|does the account own minecraft|InvalidCredentials/i.test(err.message || '')) {
+      restartProcess('微软登录失败')
+    }
+  })
 
   bot.on('end', () => {
     loopRunning = false
-    log(`连接中断，${CONFIG.reconnectDelayMs / 1000} 秒后重连...`)
-    setTimeout(createBot, CONFIG.reconnectDelayMs)
+    restartProcess('连接已断开')
   })
 
   return bot
 }
 
-// 终端输入直接发到游戏聊天（只创建一次，重连不会重复）
+// 终端输入直接发到游戏聊天（只创建一次，进程重启后自然重建）
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 rl.on('line', (input) => {
   if (bot && bot.chat) bot.chat(input)
