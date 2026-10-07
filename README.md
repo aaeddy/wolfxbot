@@ -198,7 +198,7 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
 
 ## 7. 各个机器人脚本
 
-### `afkbot.js` —— 挂机 / 迎宾（789 行）
+### `afkbot.js` —— 挂机 / 迎宾
 
 - 连接 `wolfx.jp`，账号 `afkbot`（1.20.1 / microsoft），进服后 `/res tp dyyz` 到领地，并把抗击退调满；
 - **定时发言**：广告（60 分钟）、签到提示（1000 分钟）、`/pm`（3 分钟）。时间戳写入 `afk_timers.json`，
@@ -212,7 +212,7 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
 - 数据文件：`afk_timers.json`（定时发言）、`onlinePlayers.txt`（在线名单）、`whitelist.txt`、`blacklist.txt`、`tab.json`、`check_in_data.json`；
 - 每 100ms 转头看向最近玩家（防挂机判定），掉线 5 秒自动重连，未处理的异步错误只记录不退出。
 
-### `smartbot.js` —— 搬砖（381 行）
+### `smartbot.js` —— 搬砖
 
 连上服务器后循环执行：
 
@@ -224,7 +224,7 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
 
 坐标、传送点、节奏都在文件顶部 `CONFIG` 里改；保留皮革和装备，自动进食；打开箱子 5 秒超时跳过；掉线 5 秒重连。
 
-### `killaurabot.js` —— 自动砍怪（303 行）
+### `killaurabot.js` —— 自动砍怪
 
 - 两个账号（`killaurabot`、`killaurabot2`）**间隔 5 秒**依次登录（`CONFIG.loginIntervalMs`），
   避免服务器提示"连接速度过快"；登录后各自 `/res tp best.mmo` 站到自己的位置
