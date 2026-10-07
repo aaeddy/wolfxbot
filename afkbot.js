@@ -37,7 +37,69 @@ function restartProcess(reason) {
 }
 
 /* ============================================================
- * 定时发言（时间戳写进文件，afkbot 被管理器每 30 分钟重启一次也不会漏发）
+ * TPS 监控（代替原来的“跑 30 分钟、退服 3 分钟”）
+ *   每 5 分钟发一次 /tps，从服务器报告里抓 min 值：
+ *       min 20.00   med 20.00   max 20.00
+ *   min 低于 7 说明服务器卡了，afkbot 主动下线 5 分钟，
+ *   时间到了再退出进程，由管理器重新拉上线。
+ * ============================================================ */
+const TPS_CHECK_INTERVAL_MS = 5 * 60 * 1000   // 每 5 分钟查一次
+const TPS_OFFLINE_MS = 5 * 60 * 1000          // TPS 过低时下线多久
+const TPS_MIN_THRESHOLD = 7                   // min 低于这个值就下线
+const TPS_REPLY_TIMEOUT_MS = 15 * 1000        // 等服务器报告的最长时间
+
+let plannedOfflineUntil = 0   // 大于当前时间表示“正在主动下线”，这期间的断线不重启进程
+let offlineTimer = null
+let awaitingTps = false
+let tpsReplyTimer = null
+
+// 发一次 /tps（没进服就跳过，等下一个 5 分钟）
+function requestTps(bot) {
+  if (offlineTimer || Date.now() < plannedOfflineUntil) return
+  if (!bot || !bot.entity) return
+  awaitingTps = true
+  bot.chat('/tps')
+  clearTimeout(tpsReplyTimer)
+  tpsReplyTimer = setTimeout(() => { awaitingTps = false }, TPS_REPLY_TIMEOUT_MS)
+}
+
+// 从聊天文本里抓 “min 20.00   med 20.00   max 20.00”
+function parseTpsReport(text) {
+  const plain = String(text).replace(/\u00a7[0-9a-fk-orx]/gi, '')
+  const m = plain.match(
+    /min[\s\u00a0\u200b]*([0-9]+(?:\.[0-9]+)?)[\s\u00a0\u200b]*med[\s\u00a0\u200b]*([0-9]+(?:\.[0-9]+)?)[\s\u00a0\u200b]*max[\s\u00a0\u200b]*([0-9]+(?:\.[0-9]+)?)/i
+  )
+  if (!m) return null
+  return { min: Number(m[1]), med: Number(m[2]), max: Number(m[3]) }
+}
+
+function handleTpsReport(bot, tps) {
+  awaitingTps = false
+  clearTimeout(tpsReplyTimer)
+  console.log(`[TPS] 服务器 TPS: min ${tps.min} / med ${tps.med} / max ${tps.max}`)
+  if (tps.min < TPS_MIN_THRESHOLD) goOfflineForLowTps(bot, tps.min)
+}
+
+// TPS 太低：主动下线 5 分钟，然后再上线
+function goOfflineForLowTps(bot, tpsMin) {
+  if (offlineTimer) return
+  console.log(`[TPS] min ${tpsMin} 低于 ${TPS_MIN_THRESHOLD}，主动下线 ${TPS_OFFLINE_MS / 60000} 分钟...`)
+  plannedOfflineUntil = Date.now() + TPS_OFFLINE_MS
+  offlineTimer = setTimeout(() => {
+    offlineTimer = null
+    plannedOfflineUntil = 0
+    console.log('[TPS] 下线结束，退出进程让管理器重新上线...')
+    process.exit(1)      // 管理器会重新拉起一个全新的 afkbot
+  }, TPS_OFFLINE_MS)
+  try {
+    bot.quit('tps low')
+  } catch (err) {
+    console.error('[TPS] 下线失败:', err.message)
+  }
+}
+
+/* ============================================================
+ * 定时发言（时间戳写进文件，afkbot 被管理器重启也不会漏发）
  *   原来的 setInterval 一重启就清零，所以 60 分钟 / 1000 分钟的广告永远发不出来。
  *   现在改成：每次启动读文件，算“距离上次发送过了多久”，
  *   到点就补发一次（只补一次，不会因为离线太久刷屏），然后把新时间写回文件。
@@ -143,13 +205,24 @@ function createBot() {
 })
 
 bot.on('end', () => {
+  // 因为 TPS 低而主动下线：这期间不重启进程，等下线时间到了再退出进程重新上线
+  if (Date.now() < plannedOfflineUntil) return
   restartProcess('连接已断开')
 })
 
 bot.on('message', (message) => {
   const timestamp = new Date().toLocaleTimeString()
   console.log(`[${timestamp}] ${message.toAnsi()}`)
+
+  // /tps 的服务器报告：抓 min / med / max
+  if (awaitingTps) {
+    const tps = parseTpsReport(message.toString())
+    if (tps) handleTpsReport(bot, tps)
+  }
 })
+
+// 每 5 分钟查一次服务器 TPS
+setInterval(() => requestTps(bot), TPS_CHECK_INTERVAL_MS)
 
 bot.once('spawn', () => {
   for (const key in bot.entity.metadata) {
@@ -208,7 +281,7 @@ bot.on('playerLeft', (player) => {
 })
 
 // 定时发言已改为“文件记录 + 到点补发”，见上面 CHAT_TIMERS
-// （这样被管理器每 30 分钟重启一次也不会漏发 60 分钟 / 1000 分钟的广告）
+// （这样被管理器重启也不会漏发 60 分钟 / 1000 分钟的广告）
 
  const railgun = [
   '未来さえ置き去りにして',

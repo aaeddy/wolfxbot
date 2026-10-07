@@ -4,7 +4,7 @@
  * 功能：
  *   - 在网页上启动 / 停止 afkbot.js、killaurabot.js、smartbot.js（可单独控制，也可一键全部启停）
  *   - 进程意外退出（报错、掉线崩溃、被踢…）时自动重启，连续快速崩溃会指数退避（5s → 最多 60s）
- *   - afkbot.js 按"跑 30 分钟 → 停 3 分钟 → 再跑 30 分钟"循环
+ *   - 可选：按 schedule 给某个程序配"跑 N 分钟 / 停 M 分钟"循环（目前没有程序用到）
  *   - 网页实时显示每个程序的运行状态、PID、运行时长、重启次数，以及完整日志（带 ANSI 颜色）
  *   - 同时挂载地图画控制台（/painting），两个控制台共用一个端口
  *
@@ -34,9 +34,8 @@ const PROGRAMS = [
   {
     id: 'afkbot',
     name: 'afkbot.js',
-    caption: '挂机 / 迎宾（跑 30 分钟，停 3 分钟，循环）',
+    caption: '挂机 / 迎宾（自带 TPS 监控：低于 7 自动下线 5 分钟）',
     autoRestart: true,
-    schedule: { runMs: 30 * 60 * 1000, pauseMs: 3 * 60 * 1000 },
   },
   {
     id: 'killaurabot',
@@ -369,7 +368,7 @@ const PAGE = `<!DOCTYPE html>
 <body>
   <div class="wrap">
     <h1>机器人进程管理器</h1>
-    <div class="sub">localhost:${PORT} · 自动重启 · afkbot 跑 30 分钟停 3 分钟 · 地图画控制台在 /painting</div>
+    <div class="sub">localhost:${PORT} · 自动重启 · 地图画控制台在 /painting</div>
     <div class="actions">
       <button class="btn ok" id="startAll">全部启动</button>
       <button class="btn danger" id="stopAll">全部停止</button>
