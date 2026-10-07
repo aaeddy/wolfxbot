@@ -44,6 +44,7 @@ function restartProcess(reason) {
  *   时间到了再退出进程，由管理器重新拉上线。
  * ============================================================ */
 const TPS_CHECK_INTERVAL_MS = 5 * 60 * 1000   // 每 5 分钟查一次
+const TPS_FIRST_CHECK_MS = 60 * 1000          // 进服后先查一次，网页上不用等满 5 分钟
 const TPS_OFFLINE_MS = 5 * 60 * 1000          // TPS 过低时下线多久
 const TPS_MIN_THRESHOLD = 7                   // min 低于这个值就下线
 const TPS_REPLY_TIMEOUT_MS = 15 * 1000        // 等服务器报告的最长时间
@@ -223,6 +224,7 @@ bot.on('message', (message) => {
 
 // 每 5 分钟查一次服务器 TPS
 setInterval(() => requestTps(bot), TPS_CHECK_INTERVAL_MS)
+setTimeout(() => requestTps(bot), TPS_FIRST_CHECK_MS)
 
 bot.once('spawn', () => {
   for (const key in bot.entity.metadata) {

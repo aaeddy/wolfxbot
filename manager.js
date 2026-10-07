@@ -66,6 +66,7 @@ for (const program of PROGRAMS) {
     restarts: 0,
     fastRestarts: 0,
     logs: [],
+    tps: null,              // afkbot 通过 /tps 拿到的服务器 TPS：{ min, med, max, at }
     runTimer: null,
     pauseTimer: null,
     restartTimer: null,
@@ -93,6 +94,24 @@ function addLog(program, stream, line) {
   io.emit('log', { id: program.id, ...entry })
 }
 
+/* ============================================================
+ * 解析子进程输出里的服务器 TPS
+ *   afkbot.js 每 5 分钟发一次 /tps，会把服务器报告打成这一行：
+ *     [TPS] 服务器 TPS: min 20.00 / med 20.00 / max 20.00
+ *   这里抓出来给网页实时显示（改格式要同步 afkbot.js 的 handleTpsReport）
+ * ============================================================ */
+const TPS_LINE_RE = /\[TPS\]\s*服务器 TPS:\s*min\s*([\d.]+)\s*\/\s*med\s*([\d.]+)\s*\/\s*max\s*([\d.]+)/
+
+function handleStdoutLine(program, line) {
+  const m = line.match(TPS_LINE_RE)
+  if (m) {
+    const state = getState(program.id)
+    state.tps = { min: Number(m[1]), med: Number(m[2]), max: Number(m[3]), at: Date.now() }
+    broadcastState()
+  }
+  addLog(program, 'out', line)
+}
+
 function clearTimers(state) {
   for (const key of ['runTimer', 'pauseTimer', 'restartTimer']) {
     if (state[key]) {
@@ -117,6 +136,7 @@ function snapshot() {
       pid: state.pid,
       restarts: state.restarts,
       uptimeMs: state.status === 'running' && state.startedAt ? Date.now() - state.startedAt : 0,
+      tps: state.tps || null,
       nextPhaseAt: state.nextPhaseAt || 0,
       schedule: program.schedule
         ? { runMinutes: program.schedule.runMs / 60000, pauseMinutes: program.schedule.pauseMs / 60000 }
@@ -141,6 +161,7 @@ function startProgram(id, reason = 'user') {
   state.status = 'running'
   state.startedAt = Date.now()
   state.killedByManager = false
+  state.tps = null          // 新进程还没查过 TPS，先清空上一次的
 
   const child = spawn(process.execPath, [path.join(ROOT, program.name)], {
     cwd: ROOT,
@@ -151,7 +172,7 @@ function startProgram(id, reason = 'user') {
 
   addLog(program, 'sys', `[管理器] 启动 ${program.name}（pid ${child.pid}${reason === 'schedule' ? '，定时重启' : ''}）`)
 
-  readline.createInterface({ input: child.stdout }).on('line', (line) => addLog(program, 'out', line))
+  readline.createInterface({ input: child.stdout }).on('line', (line) => handleStdoutLine(program, line))
   readline.createInterface({ input: child.stderr }).on('line', (line) => addLog(program, 'err', line))
 
   child.on('error', (err) => addLog(program, 'sys', `[管理器] 启动失败: ${err.message}`))
@@ -352,6 +373,8 @@ const PAGE = `<!DOCTYPE html>
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
   .meta { display:flex; gap:14px; flex-wrap:wrap; color:var(--muted); font-size:12px; margin:10px 0 12px; }
   .meta b { color:var(--text); font-weight:600; }
+  .meta b.good { color:var(--green); }
+  .meta b.bad { color:var(--red); }
   .log { background:#0a0c10; border:1px solid var(--border); border-radius:10px; padding:10px 12px;
     height:260px; overflow-y:auto; font-family: ui-monospace,Consolas,monospace; font-size:12px;
     line-height:1.5; white-space:pre-wrap; word-break:break-all; }
@@ -453,6 +476,7 @@ const PAGE = `<!DOCTYPE html>
         '<span>PID: <b id="pid-' + p.id + '">-</b></span>' +
         '<span>运行时长: <b id="up-' + p.id + '">-</b></span>' +
         '<span>重启次数: <b id="rs-' + p.id + '">0</b></span>' +
+        '<span>服务器 TPS: <b id="tps-' + p.id + '">-</b></span>' +
         '<span id="phase-' + p.id + '"></span>' +
       '</div>' +
       '<div class="inputrow">' +
@@ -510,6 +534,20 @@ const PAGE = `<!DOCTYPE html>
       document.getElementById('pid-' + p.id).textContent = p.pid || '-';
       document.getElementById('up-' + p.id).textContent = fmtTime(p.uptimeMs);
       document.getElementById('rs-' + p.id).textContent = p.restarts;
+
+      // 服务器 TPS（afkbot 每 5 分钟用 /tps 查一次，带"多久之前"）
+      const tpsEl = document.getElementById('tps-' + p.id);
+      if (p.tps) {
+        const age = Math.max(0, Math.floor((Date.now() - p.tps.at) / 1000));
+        const ageText = age < 60 ? age + ' 秒前'
+          : (age < 3600 ? Math.floor(age / 60) + ' 分钟前' : Math.floor(age / 3600) + ' 小时前');
+        tpsEl.textContent = 'min ' + p.tps.min + ' / med ' + p.tps.med + ' / max ' + p.tps.max + '（' + ageText + '）';
+        tpsEl.className = p.tps.min < 7 ? 'bad' : 'good';
+      } else {
+        tpsEl.textContent = '-';
+        tpsEl.className = '';
+      }
+
       document.getElementById('start-' + p.id).disabled = (p.status === 'running' || p.status === 'restarting');
       document.getElementById('stop-' + p.id).disabled = (p.status === 'stopped');
       const canSend = (p.status === 'running');
