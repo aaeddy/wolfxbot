@@ -208,7 +208,8 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
 - **TPS 保命**：每 5 分钟发一次 `/tps`，从服务器报告里抓 `min 20.00` 这个值；`min` 低于 7 就主动下线 5 分钟，
   时间到了退出进程由管理器重新上线；
 - **玩家进出播报**：识别 `whitelist.txt`（VIP 名单）与内置 OP 名单，特殊玩家单独播报；
-- **聊天指令**（需要白名单/OP）：`$ping` 查延迟、`$tps` 查服务器 TPS、`$bal` 查余额、`$重连`、
+- **聊天指令**（需要白名单/OP）：`$ping` 查延迟、`$bal` 查余额、`$重连`、
+  `$tps`（发 `/tps` 给服务器，把报告里的 min/med/max 转成中文回复：`服务器 TPS —— 最低 x / 中位 y / 最高 z`）、
   `$viplist add/remove`、`$blacklist add/remove`、`$100w` 转账、`$tpaccept`、`$res tp <领地>`、
   `$go/$goTo <玩家>`（用 `Let_it_move` 飞过去）、`$refreshOnlinePlayers`、`$removeAllOnlinePlayers`、
   `$removeTabData`，还会唱歌（`$只因你太美`、`$only my railgun`）；
@@ -227,7 +228,9 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
 3. 背包塞满后 `/warp shop`，瞬移到商店站位，左键点一下商店箱子（只点击不挖掉），发 `/qs amount all` 卖货；
 4. 回到第 1 步继续。
 
-坐标、传送点、节奏都在文件顶部 `CONFIG` 里改；保留皮革和装备，自动进食；打开箱子 5 秒超时跳过；
+坐标、传送点、节奏都在文件顶部 `CONFIG` 里改；打开箱子 5 秒超时跳过；
+**到 `/warp shop` 后会先扔一次垃圾**：只保留皮革和装备，食物只在副手留一组熟猪排（`CONFIG.foodItem`）用于自动进食，
+其余食物（含多出来的熟猪排）和杂物全部扔掉；
 断线后退出进程、由管理器自动重启（`restartDelayMs` 控制退出前的等待）。
 
 ### `killaurabot.js` —— 自动砍怪

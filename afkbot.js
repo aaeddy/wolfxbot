@@ -53,15 +53,32 @@ let plannedOfflineUntil = 0   // 大于当前时间表示“正在主动下线�
 let offlineTimer = null
 let awaitingTps = false
 let tpsReplyTimer = null
+let tpsRequester = null       // 聊天里谁发了 $tps，报告回来后要回复他
 
-// 发一次 /tps（没进服就跳过，等下一个 5 分钟）
-function requestTps(bot) {
+// 发一次 /tps。
+//   requester 为空 = 定时的健康检查；不为空 = 聊天里有人发了 $tps，
+//   报告回来后会按中文格式回复到聊天（见 handleTpsReport）。
+function requestTps(bot, requester = null) {
+  if (requester) tpsRequester = requester
   if (offlineTimer || Date.now() < plannedOfflineUntil) return
-  if (!bot || !bot.entity) return
+  if (!bot || !bot.entity) {
+    if (requester) {
+      bot.chat('我还没进服，稍后再试')
+      tpsRequester = null
+    }
+    return
+  }
+  if (awaitingTps) return    // 已经有一次 /tps 在等回复，结果回来时会一起回复
   awaitingTps = true
   bot.chat('/tps')
   clearTimeout(tpsReplyTimer)
-  tpsReplyTimer = setTimeout(() => { awaitingTps = false }, TPS_REPLY_TIMEOUT_MS)
+  tpsReplyTimer = setTimeout(() => {
+    awaitingTps = false
+    if (tpsRequester) {
+      console.log('[TPS] 没等到服务器的 /tps 反馈，放弃这次查询')
+      tpsRequester = null
+    }
+  }, TPS_REPLY_TIMEOUT_MS)
 }
 
 // 从聊天文本里抓 “min 20.00   med 20.00   max 20.00”
@@ -78,6 +95,15 @@ function handleTpsReport(bot, tps) {
   awaitingTps = false
   clearTimeout(tpsReplyTimer)
   console.log(`[TPS] 服务器 TPS: min ${tps.min} / med ${tps.med} / max ${tps.max}`)
+
+  // 有人用 $tps 问过：把服务器反馈的 min / med / max 用中文发到聊天里
+  if (tpsRequester) {
+    tpsRequester = null
+    bot.chat(
+      `服务器 TPS —— 最低 ${tps.min.toFixed(2)} / 中位 ${tps.med.toFixed(2)} / 最高 ${tps.max.toFixed(2)}`
+    )
+  }
+
   if (tps.min < TPS_MIN_THRESHOLD) goOfflineForLowTps(bot, tps.min)
 }
 
@@ -450,8 +476,10 @@ bot.on('chat', async (username, message) => {
     singSong()
     if (message === '$only my railgun')
     singRailgun()
-    if (message === '$tps')
-    bot.chat(`Bot 所在区域 TPS: ${bot.getTps()}`)
+    if (message === '$tps') {
+      // 真去问服务器要 /tps 报告，拿到结果后用中文回复（见 handleTpsReport）
+      requestTps(bot, username)
+    }
 })
 
 bot.on('chat', async(username, message) => {

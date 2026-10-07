@@ -43,6 +43,8 @@ const CONFIG = {
 
   // ---- 收皮革 ----
   leather: 'leather',
+  // 自动进食用的食物：只在副手留一组，其它食物（包括多出来的熟猪排）都当垃圾扔掉
+  foodItem: 'cooked_porkchop',
   farmStart: { x: -47001, z: 21271 },             // 进农场后的第一个落脚点
   chestStart: { x: -47002, y: 256, z: 21270 },    // 第一个箱子
   chestEndX: -47031,                              // x 方向最远的箱子（含）
@@ -219,13 +221,49 @@ async function leftClickBlock(myBot, pos) {
   return true
 }
 
-// 丢杂物：保留皮革、食物和装备（每秒一次，避免频繁发包）
+// 判断物品是不是食物（registry 里 foodsByName 收录的都算）
 function isFoodItem(myBot, item) {
   return !!(myBot.registry && myBot.registry.foodsByName && myBot.registry.foodsByName[item.name])
 }
 
+// 副手槽（玩家背包 0 输出 / 1-4 合成 / 5-8 装备 / 9-44 主背包 / 45 副手）
+const OFFHAND_SLOT = 45
+
+// 食物管理：只在副手留一组熟猪排给自动进食，背包里其它食物一律当垃圾扔掉。
+//   以前是"所有食物都保留"，背包被熟猪排/腐肉塞满后就再也腾不出格子收皮革，
+//   isInventoryFull 会一直判定满，来回跑商店也没用。
+async function manageFood(myBot) {
+  const foodName = CONFIG.foodItem
+
+  // 副手不是熟猪排（空着或被别的东西占了）就从背包里补一组过去
+  const hand = myBot.inventory.slots[OFFHAND_SLOT]
+  if (!hand || hand.name !== foodName) {
+    const stack = myBot.inventory.items().find((item) => item.name === foodName)
+    if (stack) {
+      try {
+        await myBot.equip(stack, 'off-hand')
+        log(`已把 ${stack.count} 个 ${foodName} 放到副手（自动进食用）`)
+      } catch (err) {
+        log('把食物放到副手失败:', err.message)
+      }
+    }
+  }
+
+  // 背包里剩下的食物全扔掉（副手那组不在 items() 里，不会被扔）
+  for (const item of myBot.inventory.items()) {
+    if (!isFoodItem(myBot, item)) continue
+    try {
+      await myBot.tossStack(item)
+    } catch (err) {
+      // 扔失败就下次再扔
+    }
+  }
+}
+
+// 丢杂物：保留皮革和装备，食物交给 manageFood 处理（到商店后调用一次）
 async function dropJunk(myBot) {
   if (!myBot.inventory) return
+  await manageFood(myBot)
   for (const item of myBot.inventory.items()) {
     if (KEEP_ITEMS.includes(item.name)) continue
     if (isFoodItem(myBot, item)) continue
@@ -293,6 +331,10 @@ async function runCycle(myBot) {
 
   // 4. 去商店
   await teleportAndWait(myBot, CONFIG.shopTp)
+  if (myBot !== bot) return
+
+  // 到商店先把垃圾扔掉（只留副手那组熟猪排），腾出格子再回农场收皮革
+  await dropJunk(myBot)
   if (myBot !== bot) return
 
   // 5. 瞬移到商店站位，左键点箱子，然后卖货
@@ -395,10 +437,5 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 rl.on('line', (input) => {
   if (bot && bot.chat) bot.chat(input)
 })
-
-// 丢杂物定时器也只创建一次（操作当前 bot）
-setInterval(() => {
-  if (bot && bot.inventory) dropJunk(bot).catch(() => {})
-}, 1000)
 
 createBot()
