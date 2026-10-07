@@ -71,6 +71,7 @@ set PORT=8090 && npm run web
 | 文件 | 作用 |
 | --- | --- |
 | `service/install-service.bat` | 安装开机自启（优先创建计划任务，失败会自动放进"启动"文件夹），并立即启动一次 |
+| `service/restart-manager.bat` | **一键重启**：先停掉 8080 上的控制台，再后台重新启动（改了 `manager.js` / `painting.js` 之后用它） |
 | `service/uninstall-service.bat` | 删除开机自启，并停掉 8080 端口上的控制台 |
 | `service/status.bat` | 查看自启项状态和 8080 端口占用 |
 | `service/run-manager.bat` | 手动启动（有窗口，方便看日志）；`service/run-manager-hidden.vbs` 是无窗口版本 |
