@@ -39,6 +39,9 @@ const CONFIG = {
   sweepRange: 1.6,           // 判断“周围还有几只怪”用来挑最密集的目标（横扫范围约 1 格）
   statsLogMs: 30000,         // 每 30 秒汇报一次打怪次数
   teleportTimeoutMs: 15000,  // 等传送完成的最长时间
+  // 两个账号的登录间隔（毫秒）：服务器限制连接速度，同时登录会被踢
+  // （"连接速度过快 / Connection too fast"）
+  loginIntervalMs: 5000,
   // 断线后不再原地重连（见 restartProcess），而是退出进程让管理器重新启动
   restartDelayMs: 1000,      // 退出进程前的等待时间（毫秒），留给日志刷出去
 }
@@ -320,7 +323,17 @@ rl.on('line', (input) => {
  * 启动
  * ============================================================ */
 
-for (const account of ACCOUNTS) createBot(account)
+// 两个账号间隔 loginIntervalMs 依次登录：服务器限制连接速度，同时连会被踢
+// （"连接速度过快 / Connection too fast"）。断线重启后是新进程，会重新走一遍这个间隔。
+ACCOUNTS.forEach((account, i) => {
+  if (i === 0) {
+    createBot(account)
+  } else {
+    const waitMs = CONFIG.loginIntervalMs * i
+    log('[killaurabot]', `${waitMs / 1000} 秒后登录 ${account.username}（避免连接过快）`)
+    setTimeout(() => createBot(account), waitMs)
+  }
+})
 
 // 两个账号共用一个出手调度器：A、B、A、B……交替，总输出翻倍
 startAttackScheduler()
