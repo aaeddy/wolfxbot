@@ -41,7 +41,7 @@ npm run web
 启动成功后终端会输出：
 
 ```text
-机器人进程管理器已启动
+机器人统一控制台已启动
   浏览器打开: http://localhost:8080
   地图画控制台: http://localhost:8080/painting
   管理的程序: afkbot.js, killaurabot.js, smartbot.js
@@ -74,6 +74,7 @@ set PORT=8090 && npm run web
 | `service/uninstall-service.bat` | 删除开机自启，并停掉 8080 端口上的控制台 |
 | `service/status.bat` | 查看自启项状态和 8080 端口占用 |
 | `service/run-manager.bat` | 手动启动（有窗口，方便看日志）；`service/run-manager-hidden.vbs` 是无窗口版本 |
+| `service/run-manager-silent.bat` | 后台启动的实际执行脚本（`run-manager-hidden.vbs` 调用它），负责写日志与日志轮转 |
 
 安装完成后，每次登录 Windows 都会在后台隐藏启动统一控制台，浏览器打开 <http://localhost:8080> 即可看到；
 后台日志写在 `logs/manager.log`（超过 5MB 自动转存为 `manager.log.old`）。
@@ -100,7 +101,7 @@ nssm start WolfxBotManager
 
 | 程序 | 说明 | 特性 |
 | --- | --- | --- |
-| `afkbot.js` | 挂机 / 迎宾 | 定时作息：跑 30 分钟 → 停 3 分钟 → 循环 |
+| `afkbot.js` | 挂机 / 迎宾 | 每 5 分钟查一次 `/tps`，`min` 低于 7 就自动下线 5 分钟 |
 | `killaurabot.js` | 自动砍怪 | 意外退出自动重启 |
 | `smartbot.js` | 搬砖（收皮革 → 商店卖货） | 意外退出自动重启 |
 
@@ -108,7 +109,7 @@ nssm start WolfxBotManager
 
 - 单个启动/停止、一键全部启动/全部停止；
 - 进程意外退出（报错、掉线崩溃、被踢）自动重启，连续快速崩溃按 5s → 10s → … → 60s 指数退避；
-- `afkbot.js` 按"跑 30 分钟 → 停 3 分钟"循环，网页显示本轮剩余/休息剩余时间；
+- `afkbot.js` 自带 TPS 监控：每 5 分钟发一次 `/tps`，`min` 低于 7 就主动下线 5 分钟再上线；
 - 实时显示状态、PID、运行时长、重启次数；日志带 ANSI 颜色完整展示；
 - 网页输入框可给程序 stdin 发内容（等同于在命令行里输入，机器人会当作聊天发出）。
 
@@ -202,7 +203,9 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
 
 - 连接 `wolfx.jp`，账号 `afkbot`（1.20.1 / microsoft），进服后 `/res tp dyyz` 到领地，并把抗击退调满；
 - **定时发言**：广告（60 分钟）、签到提示（1000 分钟）、`/pm`（3 分钟）。时间戳写入 `afk_timers.json`，
-  管理器每 30 分钟重启一次也不会漏发（到点补发一次）；
+  进程重启也不会漏发（到点补发一次）；
+- **TPS 保命**：每 5 分钟发一次 `/tps`，从服务器报告里抓 `min 20.00` 这个值；`min` 低于 7 就主动下线 5 分钟，
+  时间到了退出进程由管理器重新上线；
 - **玩家进出播报**：识别 `whitelist.txt`（VIP 名单）与内置 OP 名单，特殊玩家单独播报；
 - **聊天指令**（需要白名单/OP）：`$ping` 查延迟、`$tps` 查服务器 TPS、`$bal` 查余额、`$重连`、
   `$viplist add/remove`、`$blacklist add/remove`、`$100w` 转账、`$tpaccept`、`$res tp <领地>`、
@@ -210,7 +213,8 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
   `$removeTabData`，还会唱歌（`$只因你太美`、`$only my railgun`）；
 - 收到 `从 XXX 收到了$300,000。` 会自动把对方加入 VIP 名单并回复；
 - 数据文件：`afk_timers.json`（定时发言）、`onlinePlayers.txt`（在线名单）、`whitelist.txt`、`blacklist.txt`、`tab.json`、`check_in_data.json`；
-- 每 100ms 转头看向最近玩家（防挂机判定），掉线 5 秒自动重连，未处理的异步错误只记录不退出。
+- 每 100ms 转头看向最近玩家（防挂机判定）；断线后退出进程、由管理器自动重启（微软登录偶发失败时只有重启进程才能重新登录）；
+  未处理的异步错误只记录、不让进程退出。
 
 ### `smartbot.js` —— 搬砖
 
@@ -222,7 +226,8 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
 3. 背包塞满后 `/warp shop`，瞬移到商店站位，左键点一下商店箱子（只点击不挖掉），发 `/qs amount all` 卖货；
 4. 回到第 1 步继续。
 
-坐标、传送点、节奏都在文件顶部 `CONFIG` 里改；保留皮革和装备，自动进食；打开箱子 5 秒超时跳过；掉线 5 秒重连。
+坐标、传送点、节奏都在文件顶部 `CONFIG` 里改；保留皮革和装备，自动进食；打开箱子 5 秒超时跳过；
+断线后退出进程、由管理器自动重启（`restartDelayMs` 控制退出前的等待）。
 
 ### `killaurabot.js` —— 自动砍怪
 
@@ -231,7 +236,7 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
   （`-46993, 242, 21272` 和 `21274`）；
 - 每 780ms 找 10 格内最近的 5 只疣猪，挑"周围同类最多"的目标（配合横扫之刃一次打一片），两个账号交替出手
   （单账号冷却 640ms，交替后大约每 320ms 出一刀）；
-- 被服务器拉走会自己站回原位；掉线 5 秒自动重连；自动进食；
+- 被服务器拉走会自己站回原位；断线后退出进程、由管理器自动重启（两个账号一起重来）；自动进食；
 - 在终端/管理页输入的内容会**同时发给两个账号**（例如 `/res tp xxx`）。
 
 ### `inventorybot.js` —— 查看背包
@@ -260,7 +265,7 @@ node inventorybot.js afkbot   # 指定账号登录
 
 ---
 
-## 10. 文件说明
+## 8. 文件说明
 
 | 文件/目录 | 说明 |
 | --- | --- |
@@ -270,7 +275,7 @@ node inventorybot.js afkbot   # 指定账号登录
 | `public/index.html` | 地图画控制台页面（进度、俯视建造图、机器人状态、日志） |
 | `afkbot.js` | 挂机/迎宾机器人（定时发言、播报、聊天指令） |
 | `smartbot.js` | 搬砖机器人（收皮革 → 商店卖货循环） |
-| `killaurabot.js` | 双账号下界砍疣猪 |
+| `killaurabot.js` | 双账号自动砍怪 |
 | `aeddykillaurabot.js` | 单账号杀怪（作者自用） |
 | `inventorybot.js` | 查看指定账号背包 |
 | `Let_it_move.js` | 混淆的移动/飞行库（黑盒使用） |
