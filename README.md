@@ -226,7 +226,8 @@ HTTP 接口（方便脚本调用）：`/api/state`、`/api/logs/:id`、`/api/sta
 
 ### `killaurabot.js` —— 自动砍怪（303 行）
 
-- 两个账号（`killaurabot`、`killaurabot2`）同时进服，各自 `/res tp best.mmo` 后站到自己的位置
+- 两个账号（`killaurabot`、`killaurabot2`）**间隔 5 秒**依次登录（`CONFIG.loginIntervalMs`），
+  避免服务器提示"连接速度过快"；登录后各自 `/res tp best.mmo` 站到自己的位置
   （`-46993, 242, 21272` 和 `21274`）；
 - 每 780ms 找 10 格内最近的 5 只疣猪，挑"周围同类最多"的目标（配合横扫之刃一次打一片），两个账号交替出手
   （单账号冷却 640ms，交替后大约每 320ms 出一刀）；
