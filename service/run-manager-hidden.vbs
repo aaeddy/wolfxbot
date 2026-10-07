@@ -1,4 +1,4 @@
-' 用隐藏窗口（0 = 不显示窗口）启动统一控制台，供开机自启使用
+' Start the manager with a hidden window (0 = no window), used by autostart
 Option Explicit
 Dim fso, shell, scriptDir, root, batPath
 Set fso = CreateObject("Scripting.FileSystemObject")

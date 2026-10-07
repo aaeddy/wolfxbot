@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-rem 统一控制台后台启动脚本（无窗口）：node manager.js，日志写到 logs\manager.log
+rem Background launcher (no window): node manager.js -> logs\manager.log
 cd /d "%~dp0.."
 if not exist "logs" mkdir "logs"
 
-rem 日志超过 5MB 就先转存一份
+rem rotate the log file if it is bigger than 5MB
 if exist "logs\manager.log" (
   for %%A in ("logs\manager.log") do if %%~zA GTR 5242880 (
     if exist "logs\manager.log.old" del /q "logs\manager.log.old"
